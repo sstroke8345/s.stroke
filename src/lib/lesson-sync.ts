@@ -280,9 +280,12 @@ export async function saveLessonRecord(record: {
         }
 
         // 3. Insert
+        const recordId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
         const { data, error } = await supabase
             .from("records")
             .insert({
+                id: recordId,
                 user_id: userRes.data.id,
                 coach_id: coachRes.data?.id || null,
                 type: "lesson",
@@ -292,6 +295,7 @@ export async function saveLessonRecord(record: {
                 media_urls: [...(record.media_urls || []), ...(record.after_media_urls || [])],
                 is_corrected: false,
                 created_at: createdAt,
+                inserted_at: nowIso,
                 connected_lesson_id: record.connectedLessonId || null
             })
             .select()

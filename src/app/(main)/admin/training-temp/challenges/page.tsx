@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import Link from 'next/link';
 import { useRouter } from "next/navigation";
-import { TestData, TestType, mockTests, mockTodayTests, TEST_TYPE_LABELS, fetchTestsByPlayer, TestRecord } from "@/lib/test-sync";
+import { TestData, TestType, TEST_TYPE_LABELS, fetchTestsByPlayer, TestRecord } from "@/lib/test-sync";
 import { TestTable } from "@/components/training/TestTable";
 import { ClipboardList, Plus, Search, Calendar, ChevronLeft, ChevronRight, Trophy, Medal, Crown } from "lucide-react";
 import { getTodayScheduledItems } from "@/lib/schedule-sync";

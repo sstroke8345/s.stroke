@@ -80,6 +80,17 @@ const categoryLabels: Record<string, string> = {
   review: "복습"
 };
 
+const typeLabels: Record<string, string> = {
+  lesson: "레슨",
+  training: "훈련",
+  consultation: "상담",
+  todo: "할일",
+  schedule: "일정",
+  journal: "일지",
+  poll: "투표",
+  score: "스코어"
+};
+
 function FeedCard({ item }: { item: any }) {
   const config = typeConfigs[item.type] || typeConfigs.etc;
   const Icon = config.icon;
@@ -137,10 +148,6 @@ interface UserProfile {
   branch?: string;
 }
 
-interface SummaryStats {
-  avgScore: number;
-  completionRate: number | string;
-}
 
 export default function Home() {
   const router = useRouter();
@@ -171,7 +178,6 @@ export default function Home() {
       localStorage.setItem('user_shortcuts', JSON.stringify(selectedShortcutIds));
     }
   }, [selectedShortcutIds, isLoaded]);
-  const [stats, setStats] = useState<SummaryStats>({ avgScore: 0, completionRate: 0 });
   const [todayTimeline, setTodayTimeline] = useState<any[]>([]);
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
   const [pendingPolls, setPendingPolls] = useState<Vote[]>([]);
@@ -191,118 +197,7 @@ export default function Home() {
 
         setCurrentUser(profile);
 
-        let targetAthleteIds: string[] = []; // For training completion rate
-        let scoreTargetAthleteIds: string[] = []; // For average score
-
-        if (profile.role === "athlete") {
-          targetAthleteIds = [user.id];
-          scoreTargetAthleteIds = [user.id];
-        } else if (profile.role === "admin") {
-          // Super Admin: Fetch ALL athlete IDs
-          const { data: allAthletes } = await supabase.from("users").select("id").eq("role", "athlete");
-          if (allAthletes) {
-            targetAthleteIds = allAthletes.map(a => a.id);
-            scoreTargetAthleteIds = allAthletes.map(a => a.id);
-          }
-        } else if (profile.role === "coach") {
-          // Coach: Find assigned athletes (for training)
-          if (profile.assigned_athletes) {
-            const names = profile.assigned_athletes.split(',').map((s: string) => s.trim());
-            const { data: athletes } = await supabase.from("users").select("id").in("name", names).eq("role", "athlete");
-            if (athletes) targetAthleteIds = athletes.map(a => a.id);
-          }
-          // Coach: Find branch athletes (for scores)
-          if (profile.role === "headquarter" || profile.role === "office") {
-              const { data: allBranchAthletes } = await supabase.from("users").select("id").eq("role", "athlete");
-              if (allBranchAthletes) {
-                scoreTargetAthleteIds = allBranchAthletes.map(a => a.id);
-              }
-          } else if (profile.branch) {
-              const { data: branchAthletes } = await supabase.from("users").select("id").eq("branch", profile.branch).eq("role", "athlete");
-              if (branchAthletes) {
-                scoreTargetAthleteIds = branchAthletes.map(a => a.id);
-              }
-          }
-          if (scoreTargetAthleteIds.length === 0) {
-            scoreTargetAthleteIds = [...targetAthleteIds];
-          }
-        }
-
-        // 1. Calculate Average Score
         const todayStr = getKstDateStr();
-        const now = new Date();
-        const startOfMonth = getKstDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
-        const endOfMonth = getKstDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-
-        if (scoreTargetAthleteIds.length > 0) {
-          const { data: scoreData } = await supabase
-            .from("scorecards")
-            .select("total_score")
-            .in("athlete_id", scoreTargetAthleteIds)
-            .eq("hole_count", 18)
-            .gte("round_date", startOfMonth)
-            .lte("round_date", endOfMonth);
-
-          if (scoreData && scoreData.length > 0) {
-            const avg = scoreData.reduce((s, x) => s + x.total_score, 0) / scoreData.length;
-            setStats(prev => ({ ...prev, avgScore: avg }));
-          }
-        }
-
-        if (targetAthleteIds.length > 0) {
-          // 2. Calculate Today's Training Completion Rate (Average of today's active training progress)
-          const { data: activeTrainings } = await supabase
-            .from("records")
-            .select("total_count, completion_logs, template_settings")
-            .in("user_id", targetAthleteIds)
-            .eq("type", "training")
-            .lte("training_start", todayStr)
-            .gte("training_end", todayStr);
-
-          if (activeTrainings && activeTrainings.length > 0) {
-            let totalProgress = 0;
-            activeTrainings.forEach(train => {
-              let parsedLogs: string[] = [];
-              if (Array.isArray(train.completion_logs)) {
-                parsedLogs = train.completion_logs;
-              } else if (typeof train.completion_logs === 'string') {
-                try {
-                  const parsed = JSON.parse(train.completion_logs);
-                  parsedLogs = Array.isArray(parsed) ? parsed : [];
-                } catch {
-                  parsedLogs = [train.completion_logs as string];
-                }
-              }
-
-              let progressPercent = 0;
-              let reviewSetting = null;
-
-              if (Array.isArray(train.template_settings)) {
-                reviewSetting = train.template_settings.find((s: any) => s.type === "review_scorecard");
-              } else if (typeof train.template_settings === 'string') {
-                try {
-                  const parsedTs = JSON.parse(train.template_settings);
-                  if (Array.isArray(parsedTs)) {
-                    reviewSetting = parsedTs.find((s: any) => s.type === "review_scorecard");
-                  }
-                } catch (e) { }
-              }
-
-              if (reviewSetting) {
-                const completedCount = reviewSetting.completedHoles?.length || 0;
-                progressPercent = Math.min(100, Math.round((completedCount / (train.total_count || 1)) * 100));
-              } else {
-                progressPercent = Math.min(100, Math.round((parsedLogs.length / (train.total_count || 1)) * 100));
-              }
-
-              totalProgress += progressPercent;
-            });
-            const rate = totalProgress / activeTrainings.length;
-            setStats(prev => ({ ...prev, completionRate: Math.round(rate) }));
-          } else {
-            setStats(prev => ({ ...prev, completionRate: "-" }));
-          }
-        }
 
         // Fetch today's records for completion checks
         const { data: todayRecords } = await supabase
@@ -366,10 +261,10 @@ export default function Home() {
             const dd = String(effectiveDate.getDate()).padStart(2, '0');
             const voteDateStr = `${yyyy}-${mm}-${dd}`;
 
-            const votedToday = pollResponses?.some(pr => pr.poll_id === p.id && pr.vote_date === voteDateStr);
+            const votedToday = pollResponses?.some((pr: any) => pr.poll_id === p.id && pr.vote_date === voteDateStr);
             hasNotVoted = !votedToday;
           } else {
-            hasNotVoted = !pollResponses?.some(pr => pr.poll_id === p.id);
+            hasNotVoted = !pollResponses?.some((pr: any) => pr.poll_id === p.id);
           }
 
           return hasNotVoted;
@@ -404,11 +299,11 @@ export default function Home() {
             time: "20:00",
             title: "훈련일지 작성",
             type: 'journal',
-            completed: todayRecords?.some(r => r.type === 'journal') || false
+            completed: todayRecords?.some((r: any) => r.type === 'journal') || false
           });
 
           // 2. Active Trainings
-          (activeTrainings || []).forEach(at => {
+          (activeTrainings || []).forEach((at: any) => {
             const isCompletedInLogs = at.completion_logs?.some((log: string) => {
               try {
                 const ts = log.startsWith('{') ? JSON.parse(log).timestamp : log;
@@ -426,13 +321,13 @@ export default function Home() {
           });
 
           // 3. Active Polls
-          (activePolls || []).forEach(p => {
+          (activePolls || []).forEach((p: any) => {
             autoItems.push({
               id: `poll-auto-${p.id}`,
               time: "종일",
               title: `[투표] ${p.title}`,
               type: 'poll',
-              completed: pollResponses?.some(pr => pr.poll_id === p.id) || false
+              completed: pollResponses?.some((pr: any) => pr.poll_id === p.id) || false
             });
           });
         }
@@ -441,7 +336,7 @@ export default function Home() {
           ...autoItems,
           ...todaySchedules.map(s => {
             // Check if there's a matching record today
-            const isCompletedByRecord = todayRecords?.some(r =>
+            const isCompletedByRecord = todayRecords?.some((r: any) =>
               r.type === s.type &&
               (r.title === s.title || s.title?.includes(r.title || "") || r.title?.includes(s.title || ""))
             );
@@ -453,7 +348,7 @@ export default function Home() {
               completed: s.status === 'completed' || isCompletedByRecord
             };
           }),
-          ...(todos || []).map(t => ({
+          ...(todos || []).map((t: any) => ({
             id: t.id,
             time: "종일",
             title: t.title,
@@ -461,7 +356,7 @@ export default function Home() {
             completed: t.is_completed
           })),
           // Add records that are NOT journals and NOT matched to schedules or trainings
-          ...(todayRecords || []).filter(r => {
+          ...(todayRecords || []).filter((r: any) => {
             const isJournal = r.type === 'journal';
             const isUsedInTraining = false;
             const matchesSchedule = todaySchedules.some(s =>
@@ -469,7 +364,7 @@ export default function Home() {
               (r.title === s.title || s.title?.includes(r.title || "") || r.title?.includes(s.title || ""))
             );
             return !isJournal && !isUsedInTraining && !matchesSchedule;
-          }).map(r => ({
+          }).map((r: any) => ({
             id: `record-${r.id}`,
             time: new Date(r.created_at).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }),
             title: r.title || typeLabels[r.type] || "기록",
@@ -477,7 +372,7 @@ export default function Home() {
             completed: true
           })),
           // Add scorecards from today
-          ...(todayScores || []).map(s => ({
+          ...(todayScores || []).map((s: any) => ({
             id: `score-${s.id}`,
             time: new Date(s.created_at).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }),
             title: `${s.course_name} 스코어 입력`,
@@ -487,13 +382,17 @@ export default function Home() {
         ].sort((a, b) => a.time.localeCompare(b.time));
         setTodayTimeline(timeline);
 
-        const { data: updates } = await supabase
-          .from("records")
-          .select(`id, type, title, created_at, category, users!records_user_id_fkey(name), coach:users!records_coach_id_fkey(name)`)
-          .in("type", ["lesson", "training"])
-          .order("inserted_at", { ascending: false })
-          .limit(5);
-        setRecentUpdates(updates || []);
+        try {
+          const { data: updates } = await supabase
+            .from("records")
+            .select(`id, type, title, created_at, category, users!records_user_id_fkey(name), coach:users!records_coach_id_fkey(name)`)
+            .in("type", ["lesson", "training"])
+            .order("created_at", { ascending: false })
+            .limit(5);
+          setRecentUpdates(updates || []);
+        } catch {
+          setRecentUpdates([]);
+        }
 
       } catch (error) {
         console.error("Home initialization failed:", error);
@@ -582,8 +481,6 @@ export default function Home() {
       console.error("Toggle failed:", err);
     }
   };
-
-  const typeLabels: Record<string, string> = { lesson: "레슨", training: "훈련", consultation: "상담", todo: "할일", schedule: "일정", journal: "일지", poll: "투표", score: "스코어" };
 
   const isCoach = currentUser?.role === "coach";
   const isAdmin = currentUser?.role === "admin";
@@ -748,43 +645,6 @@ export default function Home() {
             </div>
           </Link>
 
-          <Link href="/training" className="block bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-zinc-100 dark:border-zinc-800 py-4 px-6 shadow-sm hover:border-brand-navy/30 hover:shadow-md transition-all group">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-full bg-zinc-50 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 shrink-0">
-                <Dumbbell size={16} />
-              </div>
-              <span className="text-sm font-bold text-zinc-600 dark:text-zinc-300">훈련</span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 pl-[40px]">오늘까지의 훈련 완료율</span>
-              <span className="text-[20px] sm:text-[26px] font-black text-zinc-900 dark:text-zinc-50 group-hover:text-brand-navy transition-colors">
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-brand-navy border-t-transparent rounded-full animate-spin inline-block ml-2" />
-                ) : (
-                  stats.completionRate === "-" ? "-" : `${stats.completionRate}%`
-                )}
-              </span>
-            </div>
-          </Link>
-
-          <Link href="/scores" className="block bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-zinc-100 dark:border-zinc-800 py-4 px-6 shadow-sm hover:border-brand-navy/30 hover:shadow-md transition-all group">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-full bg-zinc-50 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 shrink-0">
-                <Flag size={16} />
-              </div>
-              <span className="text-sm font-bold text-zinc-600 dark:text-zinc-300">스코어</span>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 pl-[40px]">{new Date().getMonth() + 1}월 평균 스코어</span>
-              <span className="text-[20px] sm:text-[26px] font-black text-zinc-900 dark:text-zinc-50 group-hover:text-brand-navy transition-colors">
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-brand-navy border-t-transparent rounded-full animate-spin inline-block ml-2" />
-                ) : (
-                  `${stats.avgScore ? stats.avgScore.toFixed(1) : "--"}타`
-                )}
-              </span>
-            </div>
-          </Link>
         </div>
       </div>
 

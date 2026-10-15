@@ -271,7 +271,9 @@ function ScoreCreateContent() {
                 }).eq("id", targetId);
                 if (updateErr) throw updateErr;
             } else {
+                const newId = crypto.randomUUID();
                 const { data: sc, error: insertErr } = await supabase.from("scorecards").insert({
+                    id: newId,
                     athlete_id: userData.id,
                     coach_id: user?.id ?? null,
                     round_date: roundDate,
@@ -283,10 +285,8 @@ function ScoreCreateContent() {
                     hole_count: holes.filter(h => h.par > 0).length
                 }).select("id").single();
                 if (insertErr) throw insertErr;
-                if (sc) {
-                    targetId = sc.id;
-                    draftIdRef.current = targetId;
-                }
+                targetId = sc?.id || newId;
+                draftIdRef.current = targetId;
             }
 
             if (!targetId || targetId === 'draft') return false;
@@ -302,6 +302,7 @@ function ScoreCreateContent() {
                 .map(({ h, idx }) => {
                     const calculatedScore = h.par > 0 ? calcHoleScore(h.shots, h.par) + h.par : 0;
                     return {
+                        id: crypto.randomUUID(),
                         scorecard_id: targetId,
                         hole_number: idx + 1,
                         par: h.par,
@@ -337,6 +338,7 @@ function ScoreCreateContent() {
                         const code = LOCATION_ABBR[shot.location] ?? shot.location.toUpperCase();
 
                         shotsToInsert.push({
+                            id: crypto.randomUUID(),
                             hole_id: holeId,
                             scorecard_id: targetId,
                             hole_number: holeNumber,
@@ -1116,9 +1118,11 @@ function ScoreCreateContent() {
                     .eq("id", scorecardId);
                 if (scErr) throw new Error(`스코어카드 업데이트 실패: ${scErr.message}`);
             } else {
+                const newId = crypto.randomUUID();
                 const { data: sc, error: scErr } = await supabase
                     .from("scorecards")
                     .insert({
+                        id:            newId,
                         athlete_id:    athleteId,
                         coach_id:      coachId,
                         round_date:    roundDate,
@@ -1133,8 +1137,8 @@ function ScoreCreateContent() {
                     })
                     .select("id")
                     .single();
-                if (scErr || !sc) throw new Error(`스코어카드 저장 실패: ${scErr?.message}`);
-                scorecardId = sc.id;
+                if (scErr) throw new Error(`스코어카드 저장 실패: ${scErr?.message}`);
+                scorecardId = sc?.id || newId;
             }
 
             // 4. 모든 홀 데이터를 배열로 준비 (Batch Insert용)
@@ -1142,6 +1146,7 @@ function ScoreCreateContent() {
                 .map((h, idx) => ({ h, idx }))
                 .filter(({ h }) => h.par > 0)
                 .map(({ h, idx }) => ({
+                    id:           crypto.randomUUID(),
                     scorecard_id: scorecardId,
                     hole_number:  idx + 1,
                     par:          h.par,
@@ -1164,7 +1169,7 @@ function ScoreCreateContent() {
             if (holesErr || !insertedHoles) throw new Error(`홀 정보 저장 실패: ${holesErr?.message}`);
 
             // 6. 모든 샷 데이터를 배열로 준비 (Batch Insert용)
-            const holeIdMap = new Map(insertedHoles.map(h => [h.hole_number, h.id]));
+            const holeIdMap = new Map(insertedHoles.map((h: any) => [h.hole_number, h.id]));
             const isYard = distanceUnit.includes("야드");
             
             const shotsToInsert: any[] = [];
@@ -1186,6 +1191,7 @@ function ScoreCreateContent() {
                     const code = LOCATION_ABBR[shot.location] ?? shot.location.toUpperCase();
 
                     shotsToInsert.push({
+                        id:            crypto.randomUUID(),
                         hole_id:       holeId,
                         scorecard_id:  scorecardId,
                         hole_number:   holeNumber,
@@ -1216,6 +1222,7 @@ function ScoreCreateContent() {
                     if (h.par > 0) {
                         const finalMarkerScore = (h.markerScore && h.markerScore.trim() !== "") ? parseInt(h.markerScore, 10) : h.par;
                         markerScoresToInsert.push({
+                            id: crypto.randomUUID(),
                             scorecard_id: scorecardId,
                             hole_number: hIdx + 1,
                             score: finalMarkerScore || 0,

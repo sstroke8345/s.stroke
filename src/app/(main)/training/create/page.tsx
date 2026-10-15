@@ -976,7 +976,8 @@ function CreateTrainingContent() {
                         </button>
                     </div>
 
-                </form>\n            <SwingKeyPreviewModal
+                </form>
+            <SwingKeyPreviewModal
                 isOpen={showSwingKeyPreview}
                 onClose={() => setShowSwingKeyPreview(false)}
                 comments={lessonComments.filter(c => c.trim() !== "")}

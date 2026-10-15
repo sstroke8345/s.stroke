@@ -182,7 +182,13 @@ export async function fetchRecentActivityByPlayer(playerName: string, type: 'les
             .limit(3);
 
         if (error) throw error;
-        return (data || []).map(r => ({
+        interface RecentRecordItem {
+            id: string;
+            title: string | null;
+            created_at: string;
+            category: string | null;
+        }
+        return ((data || []) as RecentRecordItem[]).map((r: RecentRecordItem) => ({
             id: r.id,
             title: r.title || (r.category ? `${r.category.toUpperCase()} ${type === 'analysis' ? '분석' : type === 'lesson' ? '레슨' : '훈련'}` : "제목 없음"),
             date: formatLocalDate(new Date(r.created_at)),

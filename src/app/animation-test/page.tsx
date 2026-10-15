@@ -25,7 +25,7 @@ export default function AnimationPreview() {
             }`}
             style={{ textShadow: "0 4px 15px rgba(0,0,0,0.5)" }}
           >
-            GLA Level-Up
+            S.STROKE
           </h1>
           
           {/* 화살표 애니메이션 (시작점을 p의 아랫부분에 맞춤) */}

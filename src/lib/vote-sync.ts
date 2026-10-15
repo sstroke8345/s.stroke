@@ -44,6 +44,19 @@ export const VOTE_TYPE_COLORS: Record<VoteType, { bg: string; text: string; bord
     parent: { bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-100" },
 };
 
+export interface PollResponseRecord {
+    id?: string;
+    poll_id: string;
+    option_id: string;
+    user_id?: string | null;
+    vote_date?: string | null;
+    created_at?: string;
+    users?: {
+        name?: string;
+        phone?: string;
+    } | null;
+}
+
 // ── Database Operations ──────────────────────────────────────
 
 export async function overrideWithTodayVotes(polls: Vote[]): Promise<Vote[]> {
@@ -67,15 +80,17 @@ export async function overrideWithTodayVotes(polls: Vote[]): Promise<Vote[]> {
         .eq('vote_date', voteDateStr);
         
     if (error || !todayResponses) return polls;
+
+    const responses = todayResponses as PollResponseRecord[];
     
     return polls.map(poll => {
         if (!poll.isRecurring) return poll;
         
-        const pollResponses = todayResponses.filter(r => r.poll_id === poll.id);
+        const pollResponses = responses.filter((r: PollResponseRecord) => r.poll_id === poll.id);
         const voteCounts: Record<string, number> = {};
         const uniqueUsers = new Set<string>();
         
-        pollResponses.forEach(r => {
+        pollResponses.forEach((r: PollResponseRecord) => {
             voteCounts[r.option_id] = (voteCounts[r.option_id] || 0) + 1;
             if (r.user_id) uniqueUsers.add(r.user_id);
         });
@@ -108,7 +123,7 @@ export async function getPolls(limit?: number) {
 
     if (error) {
         console.error("Supabase fetching polls error:", error.message);
-        throw error;
+        return [];
     }
     const formatted = (data || []).map(formatPollFromDb);
     return await overrideWithTodayVotes(formatted);
@@ -399,7 +414,7 @@ export async function getUserVote(pollId: string, userId: string): Promise<strin
     const { data, error } = await query;
 
     if (error) throw error;
-    return (data || []).map(r => r.option_id);
+    return ((data || []) as PollResponseRecord[]).map((r: PollResponseRecord) => r.option_id);
 }
 
 // ── Helper ──────────────────────────────────────────────────

@@ -125,6 +125,7 @@ export async function saveEvent(event: ScheduleEvent): Promise<string | null> {
         }
 
         return supabase.from("schedules").insert({
+            id: event.id || crypto.randomUUID(),
             user_id: pUserId,
             creator_id: user.id,
             event_type: mapToDbEventType(event.type),

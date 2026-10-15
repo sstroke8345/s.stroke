@@ -60,31 +60,7 @@ export const TEST_TYPE_COLORS: Record<string, { bg: string; text: string; border
     physical: { bg: "bg-amber-50", text: "text-amber-600", border: "border-l-amber-500" },
 };
 
-export const mockTests: TestData[] = [
-    {
-        id: "t1",
-        type: "shot",
-        title: "드라이버 비거리 테스트",
-        playerName: "김민수",
-        coachName: "박코치",
-        comment: "전체적으로 비거리가 10m 이상 향상됨. 정타율(Smash Factor) 1.48 기록.",
-        date: "2026-03-22",
-    },
-    {
-        id: "t2",
-        type: "around_green",
-        title: "그린 주변 어프로치 정교도",
-        playerName: "이수진",
-        coachName: "최코치",
-        comment: "20m 거리 어프로치에서 반경 1.5m 이내 성공률 80% 달성.",
-        date: "2026-03-21",
-    },
-];
 
-export const mockTodayTests = [
-    { id: "st1", playerName: "김민수", time: "10:00~11:00", type: "shot" as TestType },
-    { id: "st2", playerName: "이지원", time: "11:30~12:30", type: "around_green" as TestType },
-];
 
 export interface TestRecord {
     id: string;

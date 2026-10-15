@@ -1,4 +1,8 @@
 import { createClient } from './supabase/client';
+import fallbackReferenceData from './sg-reference-data.json';
+
+let cachedBaselines: any[] | null = null;
+let cachedPenalties: any[] | null = null;
 
 export interface ShotResult {
     shotLabel: string;
@@ -103,22 +107,36 @@ export async function calculateScorecardAnalysis(scorecardId: string): Promise<H
 }
 
 export async function calculateAnalysisFromHoles(sortedHoles: any[]): Promise<HoleAnalysis[]> {
-    const supabase = createClient();
-    const [baselineRes, penaltyRes] = await Promise.all([
-        supabase.from('sg_baseline').select('*').order('distance_m'),
-        supabase.from('sg_location_penalty').select('*')
-    ]);
+    if (!cachedBaselines || !cachedPenalties) {
+        try {
+            const supabase = createClient();
+            const [baselineRes, penaltyRes] = await Promise.all([
+                supabase.from('sg_baseline').select('*').order('distance_m'),
+                supabase.from('sg_location_penalty').select('*')
+            ]);
 
-    if (baselineRes.error) throw new Error(`sg_baseline query error: ${baselineRes.error.message}`);
-    if (penaltyRes.error) throw new Error(`sg_location_penalty query error: ${penaltyRes.error.message}`);
+            if (baselineRes.data && baselineRes.data.length > 0) {
+                cachedBaselines = baselineRes.data;
+            }
+            if (penaltyRes.data && penaltyRes.data.length > 0) {
+                cachedPenalties = penaltyRes.data;
+            }
+        } catch (e) {
+            console.warn("Failed to fetch SG baseline from Supabase, using fallback:", e);
+        }
 
-    const baselines = baselineRes.data;
-    const penalties = penaltyRes.data;
+        if (!cachedBaselines || cachedBaselines.length === 0) {
+            cachedBaselines = fallbackReferenceData.baselines;
+        }
+        if (!cachedPenalties || cachedPenalties.length === 0) {
+            cachedPenalties = fallbackReferenceData.penalties;
+        }
+    }
 
-    if (!baselines || baselines.length === 0) throw new Error('Reference data not found: sg_baseline is empty');
-    if (!penalties || penalties.length === 0) throw new Error('Reference data not found: sg_location_penalty is empty');
+    const baselines = cachedBaselines;
+    const penalties = cachedPenalties;
 
-    const penaltyMap = new Map(penalties.map(p => [p.location_code, Number(p.penalty_value)]));
+    const penaltyMap = new Map(penalties.map((p: any) => [p.location_code, Number(p.penalty_value)]));
 
     // Helper: Lookup baseline score
     const getBaselineScore = (dist: number, lie: string, par: number) => {
@@ -1128,16 +1146,17 @@ export async function generateAndSaveScorecardSummary(scorecardId: string): Prom
     };
 
     // 4. Upsert into scorecard_summary
-    // Try to update first, if error or no rows updated, insert. (Assuming scorecard_id is unique per summary)
-    // Actually, let's check if it exists
-    const { data: existing } = await supabase.from('scorecard_summary').select('id').eq('scorecard_id', scorecardId).single();
+    const { data: existing } = await supabase.from('scorecard_summary').select('id').eq('scorecard_id', scorecardId).maybeSingle();
     
     let dbErr = null;
     if (existing) {
         const { error } = await supabase.from('scorecard_summary').update(payload).eq('id', existing.id);
         dbErr = error;
     } else {
-        const { error } = await supabase.from('scorecard_summary').insert([payload]);
+        const { error } = await supabase.from('scorecard_summary').insert([{
+            id: crypto.randomUUID(),
+            ...payload
+        }]);
         dbErr = error;
     }
 

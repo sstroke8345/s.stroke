@@ -165,15 +165,17 @@ export function SideNav() {
                     .eq("id", user.id)
                     .single();
 
-                if (profile) {
-                    setUserRole(profile.role);
-                    setUserName(profile.name);
-                    setUserBranch(profile.branch);
-                    if (profile.role === "coach" || profile.role === "admin" || profile.role === "headquarter" || profile.role === "office") {
-                        setProfileLink(`/system/coaches/${profile.id}`);
-                    } else if (profile.role === "athlete") {
-                        setProfileLink(`/system/athletes/${profile.id}`);
-                    }
+                const role = profile?.role || user.user_metadata?.role || "athlete";
+                const name = profile?.name || user.user_metadata?.name || "사용자";
+                const branch = profile?.branch || user.user_metadata?.branch || "";
+
+                setUserRole(role);
+                setUserName(name);
+                setUserBranch(branch);
+                if (role === "coach" || role === "admin" || role === "headquarter" || role === "office") {
+                    setProfileLink(`/system/coaches/${user.id}`);
+                } else if (role === "athlete") {
+                    setProfileLink(`/system/athletes/${user.id}`);
                 }
             } else {
                 setUserRole("guest");
@@ -358,7 +360,7 @@ export function SideNav() {
                     <div className="flex flex-col gap-4 mb-6">
                         <div className="flex items-center justify-between">
                             <Link href="/" className="flex items-center justify-center w-full px-3 py-2.5 bg-brand-navy rounded-xl shadow-md group border border-brand-navy-dark">
-                                <span className="text-white font-black text-xl tracking-widest transition-transform group-hover:scale-105">Level-Up</span>
+                                <span className="text-white font-black text-xl tracking-widest transition-transform group-hover:scale-105">S.STROKE</span>
                             </Link>
                             {/* Mobile Close Button */}
                             <button

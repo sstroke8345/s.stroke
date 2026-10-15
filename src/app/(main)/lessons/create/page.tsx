@@ -61,27 +61,6 @@ const partOptions: { key: string; label: string }[] = [
     { key: "etc", label: "Etc" },
 ];
 
-const mockRecentScore = {
-    id: "s1",
-    date: "2026-03-04",
-    course: "레이크힐스 CC",
-    score: 82,
-    teeShot: "Fairway 60%",
-    iron: "GIR 45%",
-    pitch: "Scrambling 30%",
-    aroundGreen: "Sand Save 50%",
-    putting: "32 Putts",
-    challengeFocus: "백스윙 템포 유지",
-    strongPoint: "드라이버 비거리 안정적",
-};
-
-const dummyImages = [
-    "https://images.unsplash.com/photo-1587394625514-6d9b3a3250b7?auto=format&fit=crop&q=80&w=200&h=200",
-    "https://images.unsplash.com/photo-1593111774640-36fbb0143891?auto=format&fit=crop&q=80&w=200&h=200",
-    "https://images.unsplash.com/photo-1586227740560-8cf2732c1531?auto=format&fit=crop&q=80&w=200&h=200",
-    "https://images.unsplash.com/photo-1535136104956-f1b21abdbf1f?auto=format&fit=crop&q=80&w=200&h=200",
-];
-
 // (Supabase used for templates)
 
 export default function CreateLessonPage() {

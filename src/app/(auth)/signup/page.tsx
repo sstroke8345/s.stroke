@@ -91,8 +91,17 @@ export default function SignupPage(props: { searchParams: Promise<{ [key: string
                 formData.append('athlete_id', verifyData.athleteId);
             }
 
-            // If validation passes, manually submit the form data to the server action
-            await signup(formData);
+            // If validation passes, submit the form data to the server action
+            const res = await signup(formData);
+            if (res && !res.success) {
+                setPasswordError(res.error || '가입 처리 중 오류가 발생했습니다.');
+                return;
+            }
+
+            if (res && res.redirectUrl) {
+                window.location.href = res.redirectUrl;
+                return;
+            }
         } catch (error) {
             console.error(error);
             setPasswordError('가입 처리 중 오류가 발생했습니다.');
@@ -156,20 +165,7 @@ export default function SignupPage(props: { searchParams: Promise<{ [key: string
                     onChange={handlePhoneChange}
                 />
             </div>
-            <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300" htmlFor="branch">
-                    지점
-                </label>
-                <select
-                    className="rounded-lg px-4 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 transition-all text-sm appearance-none font-medium"
-                    name="branch"
-                    required
-                    defaultValue="조이마루점"
-                >
-                    <option value="조이마루점">조이마루점</option>
-                    <option value="구미점">구미점</option>
-                </select>
-            </div>
+
             <div className="flex flex-col gap-2 relative">
                 <label className="text-sm font-semibold text-zinc-700 dark:text-zinc-300" htmlFor="email">
                     이메일
@@ -244,7 +240,7 @@ export default function SignupPage(props: { searchParams: Promise<{ [key: string
                     {showTerms && (
                         <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 rounded text-xs text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 max-h-48 overflow-y-auto mt-1 space-y-2 whitespace-pre-wrap">
                             <p className="font-bold">제1조 (목적)</p>
-                            <p>본 약관은 GLA Level-Up(이하 "회사")이 제공하는 제반 서비스의 이용과 관련하여 회사와 회원과의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+                            <p>본 약관은 S.STROKE(이하 "회사")이 제공하는 제반 서비스의 이용과 관련하여 회사와 회원과의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
                             
                             <p className="font-bold">제2조 (용어의 정의)</p>
                             <p>"회원"이라 함은 회사의 서비스에 접속하여 본 약관에 따라 회사와 이용계약을 체결하고 회사가 제공하는 서비스를 이용하는 고객(선수, 코치, 학부모 등)을 말합니다.</p>
