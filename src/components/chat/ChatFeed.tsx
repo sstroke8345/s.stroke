@@ -496,6 +496,10 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                 setModalAthlete(newInit.nextState.athleteName || "");
                                 setModalPart(newInit.nextState.lessonCategory || "shot");
                                 setIsLessonModalOpen(true);
+                            } else if (newInit.nextState.targetUrl && ["CREATE_SCORE", "CREATE_TRAINING", "CREATE_PLAN", "CREATE_JOURNAL", "CREATE_CONSULTATION"].includes(aiResult.intent)) {
+                                setTimeout(() => {
+                                    router.push(newInit.nextState.targetUrl!);
+                                }, 600);
                             }
 
                             const botMsg: ChatMessage = {
@@ -548,8 +552,18 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
             setIsLessonModalOpen(true);
         }
 
-        // Auto-navigate for VIEW / NAVIGATE intents
-        if (result.nextState.targetUrl && (result.nextState.intent === "NAVIGATE" || result.nextState.intent === "VIEW_LESSONS" || result.nextState.intent === "VIEW_TRAININGS" || result.nextState.intent === "VIEW_SCORES")) {
+        // Auto-navigate for VIEW / NAVIGATE / CREATE intents
+        if (result.nextState.targetUrl && (
+            result.nextState.intent === "NAVIGATE" || 
+            result.nextState.intent === "VIEW_LESSONS" || 
+            result.nextState.intent === "VIEW_TRAININGS" || 
+            result.nextState.intent === "VIEW_SCORES" ||
+            result.nextState.intent === "CREATE_SCORE" ||
+            result.nextState.intent === "CREATE_TRAINING" ||
+            result.nextState.intent === "CREATE_PLAN" ||
+            result.nextState.intent === "CREATE_JOURNAL" ||
+            result.nextState.intent === "CREATE_CONSULTATION"
+        )) {
             setTimeout(() => {
                 router.push(result.nextState.targetUrl!);
             }, 600);
@@ -669,7 +683,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-rose-500 bg-clip-text text-transparent">
                                 {coachName || "코치"}님
                             </span>
-                            , 무엇을 작성할까요?
+                            , 무엇을 시작할까요?
                         </h1>
 
                         {/* Secondary Quick Micro Chips */}

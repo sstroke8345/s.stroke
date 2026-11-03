@@ -315,7 +315,7 @@ export async function preloadAthletes(): Promise<{ id: string; name: string }[]>
     if (athleteCache.length > 0) return athleteCache;
     try {
         const supabase = createClient();
-        const { data, error } = await supabase.from("users").select("id, name").neq("role", "parent");
+        const { data, error } = await supabase.from("users").select("id, name").eq("role", "athlete");
         if (data && !error) {
             athleteCache = (data as Array<{ id: string; name: string | null }>).filter((u: { id: string; name: string | null }) => !!u.name) as { id: string; name: string }[];
         }
@@ -412,28 +412,7 @@ export function processInitialMessage(
         athleteName: athlete.name
     };
 
-    // If athlete name is missing for creation tasks, ask for athlete first
-    if (["CREATE_LESSON", "CREATE_TRAINING", "CREATE_CONSULTATION", "CREATE_PLAN", "CREATE_JOURNAL", "CREATE_SCORE"].includes(intent) && !athlete.name) {
-        state.step = "AWAITING_ATHLETE";
-        // 대규모 선수 대비: 상위 추천 선수 4명 + '선수 검색' 단추
-        const topAthletes = athletes.slice(0, 4).map(a => ({ label: a.name, value: a.name }));
-        const options: QuickOption[] = [
-            ...topAthletes,
-            { label: "🔍 선수 검색", value: "__SEARCH_ATHLETE__", accent: true }
-        ];
-
-        return {
-            nextState: state,
-            response: {
-                message: "어떤 선수의 작업을 진행할까요? 아래에서 선수를 선택하거나 이름을 말씀해주세요.",
-                options,
-                showInput: true,
-                inputPlaceholder: "선수 이름 입력 (예: 000)..."
-            }
-        };
-    }
-
-    // Process each intent with athlete resolved
+    // Process each intent directly (all creation forms have athlete search/selection built-in)
     return handleIntentNextStep(state, input);
 }
 
@@ -475,13 +454,16 @@ export function handleIntentNextStep(state: ChatSessionState, input: string): { 
             const playerParam = athleteName !== "선수" ? `?player=${encodeURIComponent(athleteName)}` : "";
             const targetUrl = `/training/create${playerParam}`;
             state.targetUrl = targetUrl;
-            state.targetTitle = `${athleteName} 훈련 작성`;
+            state.targetTitle = athleteName !== "선수" ? `${athleteName} 훈련 작성` : "훈련 작성";
+            const title = state.targetTitle;
             return {
                 nextState: state,
                 response: {
-                    message: `🏋️ **${athleteName}** 선수의 **훈련 작성** 화면으로 이동합니다.`,
+                    message: athleteName !== "선수"
+                        ? `🏋️ **${athleteName}** 선수의 **훈련 작성** 화면으로 이동합니다.`
+                        : `🏋️ **훈련 작성** 화면으로 이동합니다.`,
                     options: [
-                        { label: `👉 ${athleteName} 훈련 작성 바로가기`, value: targetUrl, accent: true },
+                        { label: `👉 ${title} 바로가기`, value: targetUrl, accent: true },
                         { label: "🏠 메인 메뉴", value: "처음으로" }
                     ],
                     actionCard: "NAVIGATE_CARD",
@@ -494,13 +476,16 @@ export function handleIntentNextStep(state: ChatSessionState, input: string): { 
             const playerParam = athleteName !== "선수" ? `?player=${encodeURIComponent(athleteName)}` : "";
             const targetUrl = `/admin/training-plan/create${playerParam}`;
             state.targetUrl = targetUrl;
-            state.targetTitle = `${athleteName} 훈련계획 작성`;
+            state.targetTitle = athleteName !== "선수" ? `${athleteName} 훈련계획 작성` : "훈련계획 작성";
+            const title = state.targetTitle;
             return {
                 nextState: state,
                 response: {
-                    message: `📋 **${athleteName}** 선수의 **훈련계획 작성** 화면으로 이동합니다.`,
+                    message: athleteName !== "선수"
+                        ? `📋 **${athleteName}** 선수의 **훈련계획 작성** 화면으로 이동합니다.`
+                        : `📋 **훈련계획 작성** 화면으로 이동합니다.`,
                     options: [
-                        { label: `👉 ${athleteName} 훈련계획 작성 바로가기`, value: targetUrl, accent: true },
+                        { label: `👉 ${title} 바로가기`, value: targetUrl, accent: true },
                         { label: "🏠 메인 메뉴", value: "처음으로" }
                     ],
                     actionCard: "NAVIGATE_CARD",
@@ -513,13 +498,16 @@ export function handleIntentNextStep(state: ChatSessionState, input: string): { 
             const playerParam = athleteName !== "선수" ? `?player=${encodeURIComponent(athleteName)}` : "";
             const targetUrl = `/admin/training-journal/create${playerParam}`;
             state.targetUrl = targetUrl;
-            state.targetTitle = `${athleteName} 훈련일지 작성`;
+            state.targetTitle = athleteName !== "선수" ? `${athleteName} 훈련일지 작성` : "훈련일지 작성";
+            const title = state.targetTitle;
             return {
                 nextState: state,
                 response: {
-                    message: `📔 **${athleteName}** 선수의 **훈련일지 작성** 화면으로 이동합니다.`,
+                    message: athleteName !== "선수"
+                        ? `📔 **${athleteName}** 선수의 **훈련일지 작성** 화면으로 이동합니다.`
+                        : `📔 **훈련일지 작성** 화면으로 이동합니다.`,
                     options: [
-                        { label: `👉 ${athleteName} 훈련일지 작성 바로가기`, value: targetUrl, accent: true },
+                        { label: `👉 ${title} 바로가기`, value: targetUrl, accent: true },
                         { label: "🏠 메인 메뉴", value: "처음으로" }
                     ],
                     actionCard: "NAVIGATE_CARD",
@@ -532,13 +520,16 @@ export function handleIntentNextStep(state: ChatSessionState, input: string): { 
             const playerParam = athleteName !== "선수" ? `?player=${encodeURIComponent(athleteName)}` : "";
             const targetUrl = `/consultations/create${playerParam}`;
             state.targetUrl = targetUrl;
-            state.targetTitle = `${athleteName} 상담일지 작성`;
+            state.targetTitle = athleteName !== "선수" ? `${athleteName} 상담일지 작성` : "상담일지 작성";
+            const title = state.targetTitle;
             return {
                 nextState: state,
                 response: {
-                    message: `💬 **${athleteName}** 선수의 **상담일지 작성** 화면으로 이동합니다.`,
+                    message: athleteName !== "선수"
+                        ? `💬 **${athleteName}** 선수의 **상담일지 작성** 화면으로 이동합니다.`
+                        : `💬 **상담일지 작성** 화면으로 이동합니다.`,
                     options: [
-                        { label: `👉 ${athleteName} 상담일지 작성 바로가기`, value: targetUrl, accent: true },
+                        { label: `👉 ${title} 바로가기`, value: targetUrl, accent: true },
                         { label: "🏠 메인 메뉴", value: "처음으로" }
                     ],
                     actionCard: "NAVIGATE_CARD",
@@ -551,13 +542,16 @@ export function handleIntentNextStep(state: ChatSessionState, input: string): { 
             const playerParam = athleteName !== "선수" ? `?player=${encodeURIComponent(athleteName)}` : "";
             const targetUrl = `/scores/create${playerParam}`;
             state.targetUrl = targetUrl;
-            state.targetTitle = `${athleteName} 스코어 입력`;
+            state.targetTitle = athleteName !== "선수" ? `${athleteName} 스코어 입력` : "스코어카드 작성";
+            const title = state.targetTitle;
             return {
                 nextState: state,
                 response: {
-                    message: `🚩 **${athleteName}** 선수의 **정식 스코어카드 작성** 화면으로 이동합니다.`,
+                    message: athleteName !== "선수"
+                        ? `🚩 **${athleteName}** 선수의 **정식 스코어카드 작성** 화면으로 이동합니다.`
+                        : `🚩 **정식 스코어카드 작성** 화면으로 이동합니다.`,
                     options: [
-                        { label: `👉 ${athleteName} 스코어카드 작성 바로가기`, value: targetUrl, accent: true },
+                        { label: `👉 ${title} 바로가기`, value: targetUrl, accent: true },
                         { label: "🏠 메인 메뉴", value: "처음으로" }
                     ],
                     actionCard: "NAVIGATE_CARD",
