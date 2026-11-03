@@ -129,25 +129,25 @@ export default function EditPlanPage() {
     }, [selectedPlayer, trainingDate]);
 
     useEffect(() => {
-        const supabase = createClient();
-        supabase.auth.getUser().then(({ data: { user } }) => {
+        const fetchUser = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 setCurrentUserId(user.id);
-                supabase.from("users")
+                const { data } = await supabase.from("users")
                     .select("role, name")
                     .eq("id", user.id)
-                    .single()
-                    .then(({ data }) => {
-                        if (data) {
-                            setUserRole(data.role);
-                            setCurrentUserName(data.name);
-                            if (data.role === "athlete") {
-                                setSelectedPlayer(data.name);
-                            }
-                        }
-                    });
+                    .single();
+                if (data) {
+                    setUserRole(data.role);
+                    setCurrentUserName(data.name);
+                    if (data.role === "athlete") {
+                        setSelectedPlayer(data.name);
+                    }
+                }
             }
-        });
+        };
+        fetchUser();
     }, []);
 
     // ── Player Filter ────────────────────────────────────────────────

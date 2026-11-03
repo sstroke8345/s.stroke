@@ -26,7 +26,10 @@ import {
     UserCircle,
     MessageSquare,
     Trophy,
-    Medal
+    Medal,
+    Sparkles,
+    Trash2,
+    Plus
 } from "lucide-react";
 
 // Menu configuration based on user request
@@ -138,10 +141,25 @@ const menuItems = [
     },
 ];
 
+import { 
+    getSavedChatSessions, 
+    getActiveChatSessionId, 
+    setActiveChatSessionId, 
+    startNewChatSession,
+    deleteChatSession, 
+    clearAllChatSessions,
+    ChatSessionItem 
+} from "@/lib/chat-session-storage";
+
 export function SideNav() {
     const router = useRouter();
     const pathname = usePathname();
     const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+    const [isAllMenuOpen, setIsAllMenuOpen] = useState(false);
+    const [isChatHistoryOpen, setIsChatHistoryOpen] = useState(true);
+    const [showAllSessions, setShowAllSessions] = useState(false);
+    const [chatSessions, setChatSessions] = useState<ChatSessionItem[]>([]);
+    const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [profileLink, setProfileLink] = useState("/");
     const [userRole, setUserRole] = useState<string | null>(null);
@@ -153,6 +171,23 @@ export function SideNav() {
     useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [pathname]);
+
+    // Load saved chat sessions and subscribe to changes
+    useEffect(() => {
+        const refreshSessions = () => {
+            setChatSessions(getSavedChatSessions());
+            setActiveChatId(getActiveChatSessionId());
+        };
+        refreshSessions();
+
+        window.addEventListener("s_stroke_chat_history_updated", refreshSessions);
+        window.addEventListener("s_stroke_chat_session_change", refreshSessions);
+
+        return () => {
+            window.removeEventListener("s_stroke_chat_history_updated", refreshSessions);
+            window.removeEventListener("s_stroke_chat_session_change", refreshSessions);
+        };
+    }, []);
 
     useEffect(() => {
         const supabase = createClient();
@@ -304,42 +339,26 @@ export function SideNav() {
                     <Menu size={24} />
                 </button>
 
-                {/* Right: Shortcuts + Profile aligned to the right */}
-                <div className="flex items-center gap-1 sm:gap-2 ml-auto">
-                    <Link href="/" className={cn(
-                        "flex flex-col items-center justify-center min-w-[40px] py-1 rounded-lg transition-all",
-                        pathname === "/" ? "text-brand-navy dark:text-brand-navy-light" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    )}>
-                        <Home size={18} />
-                        <span className="text-[9px] font-bold mt-0.5 leading-none">Home</span>
-                    </Link>
-                    <Link href="/lessons" className={cn(
-                        "flex flex-col items-center justify-center min-w-[40px] py-1 rounded-lg transition-all",
-                        pathname.startsWith("/lessons") ? "text-brand-navy dark:text-brand-navy-light" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    )}>
-                        <BookOpen size={18} />
-                        <span className="text-[9px] font-bold mt-0.5 leading-none">Lesson</span>
-                    </Link>
-                    <Link href="/training" className={cn(
-                        "flex flex-col items-center justify-center min-w-[40px] py-1 rounded-lg transition-all",
-                        pathname.startsWith("/training") ? "text-brand-navy dark:text-brand-navy-light" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    )}>
-                        <Dumbbell size={18} />
-                        <span className="text-[9px] font-bold mt-0.5 leading-none">Train</span>
-                    </Link>
-                    <Link href="/scores" className={cn(
-                        "flex flex-col items-center justify-center min-w-[40px] py-1 rounded-lg transition-all",
-                        pathname.startsWith("/scores") ? "text-brand-navy dark:text-brand-navy-light" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    )}>
-                        <Flag size={18} />
-                        <span className="text-[9px] font-bold mt-0.5 leading-none">Score</span>
-                    </Link>
-                    <Link href={profileLink} className={cn(
-                        "flex flex-col items-center justify-center min-w-[44px] py-1 rounded-lg transition-all",
-                        pathname.startsWith("/system/coaches") || pathname.startsWith("/system/athletes") ? "text-brand-navy dark:text-brand-navy-light" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                    )}>
-                        <UserCircle size={22} strokeWidth={1.5} />
-                        <span className="text-[9px] font-bold mt-0.5 leading-none">Profile</span>
+                {/* Right: Profile Avatar aligned to the right */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                    <button
+                        onClick={() => {
+                            startNewChatSession();
+                            if (pathname !== "/") {
+                                router.push("/");
+                            }
+                        }}
+                        className="w-9 h-9 rounded-full text-zinc-600 dark:text-zinc-400 hover:text-brand-navy dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center justify-center transition-colors"
+                        title="새 대화 시작 (홈)"
+                    >
+                        <Home size={20} />
+                    </button>
+                    <Link
+                        href={profileLink}
+                        className="w-9 h-9 rounded-full bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 dark:text-brand-navy-light flex items-center justify-center font-black text-sm hover:scale-105 transition-transform border border-brand-navy/20 shadow-sm"
+                        title="프로필"
+                    >
+                        {userName ? userName.slice(0, 1) : "S"}
                     </Link>
                 </div>
             </div>
@@ -386,100 +405,189 @@ export function SideNav() {
                         </div>
                     </div>
 
-                    <nav className="space-y-1">
-                        {menuItems
-                            .filter(item => canShowMenu(item))
-                            .map((item) => {
-                                const Icon = item.icon;
-                                const filteredSubItems = item.subItems?.filter(sub => canShowSubItem(sub));
-                                const hasSubItems = !!filteredSubItems && filteredSubItems.length > 0;
 
-                                if (!item.subItems) {
-                                    // For single links, we consider it active if the pathname starts with the href
-                                    // But avoid double-highlighting if another menu item has a more specific (longer) match
-                                    const isActive = pathname === item.href || (
-                                        item.href !== '/' &&
-                                        pathname.startsWith(item.href!) &&
-                                        !menuItems.some(other =>
-                                            other.href !== item.href &&
-                                            other.href &&
-                                            other.href !== '/' &&
-                                            pathname.startsWith(other.href) &&
-                                            other.href.length > item.href!.length
-                                        )
-                                    );
-                                    return (
-                                        <Link
-                                            key={item.title}
-                                            href={item.href!}
-                                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                                            ${isActive
-                                                    ? "bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 dark:text-white"
-                                                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 hover:text-zinc-900 dark:hover:text-zinc-100"
-                                                }`}
-                                        >
-                                            <Icon size={18} />
-                                            {item.title}
-                                        </Link>
-                                    );
-                                }
+                    {/* Collapsible: Recent Chat Sessions (최근 대화 기록) */}
+                    <div className="mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+                        <div className="flex items-center justify-between px-2 py-1.5">
+                            <button
+                                onClick={() => setIsChatHistoryOpen(prev => !prev)}
+                                className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                            >
+                                <MessageSquare size={13} className="text-brand-navy" />
+                                <span>최근 대화 기록 ({chatSessions.length})</span>
+                                {isChatHistoryOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button>
 
-                                // Foldable Item
-                                const isMenuOpen = openMenus[item.title];
-                                const isAnyChildActive = item.subItems?.some(
-                                    sub => pathname === sub.href || pathname.startsWith(sub.href + '/')
-                                );
+                            <button
+                                onClick={() => {
+                                    startNewChatSession();
+                                    if (pathname !== "/") {
+                                        router.push("/");
+                                    }
+                                }}
+                                className="flex items-center gap-1 text-[11px] font-bold text-brand-navy hover:underline"
+                                title="새 대화 시작"
+                            >
+                                <Plus size={12} />
+                                <span>새 대화</span>
+                            </button>
+                        </div>
 
-                                return (
-                                    <div key={item.title} className="space-y-1">
-                                        <button
-                                            onClick={() => toggleMenu(item.title)}
-                                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                                            ${isAnyChildActive
-                                                    ? "text-brand-navy dark:text-white"
-                                                    : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
-                                                }`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <Icon size={18} className={isAnyChildActive ? "text-brand-navy dark:text-brand-navy-light" : "text-zinc-400"} />
-                                                {item.title}
-                                            </div>
-                                            {isMenuOpen ? (
-                                                <ChevronDown size={16} className="text-zinc-400" />
-                                            ) : (
-                                                <ChevronRight size={16} className="text-zinc-400" />
-                                            )}
-                                        </button>
-
-                                        {isMenuOpen && (
-                                            <div className="pl-10 space-y-1 mt-1 mb-2">
-                                                {filteredSubItems?.map((sub) => {
-                                                    const isSubActive = pathname === sub.href;
-                                                    return (
-                                                        <Link
-                                                            key={sub.title}
-                                                            href={sub.href}
-                                                            onClick={() => {
-                                                                if (sub.href === "/admin/player-reports") {
-                                                                    sessionStorage.removeItem("gla_report_athlete_id");
-                                                                }
-                                                            }}
-                                                            className={`block px-3 py-2 rounded-lg text-sm transition-colors
-                                                            ${isSubActive
-                                                                    ? "bg-brand-navy/5 text-brand-navy font-semibold dark:bg-brand-navy/20 dark:text-white"
-                                                                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
-                                                                }`}
-                                                        >
-                                                            {sub.title}
-                                                        </Link>
-                                                    );
-                                                })}
-                                            </div>
+                        {isChatHistoryOpen && (
+                            <div className="mt-1 space-y-0.5 animate-fadeIn">
+                                {chatSessions.length === 0 ? (
+                                    <p className="px-3 py-1.5 text-xs text-zinc-400">저장된 대화 기록이 없습니다.</p>
+                                ) : (
+                                    <>
+                                        {(showAllSessions ? chatSessions : chatSessions.slice(0, 10)).map(session => {
+                                            const isSelected = pathname === "/" && activeChatId === session.id;
+                                            return (
+                                                <div
+                                                    key={session.id}
+                                                    className={`group flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                                                        isSelected
+                                                            ? "bg-brand-navy/10 text-brand-navy font-bold dark:bg-brand-navy/20 dark:text-white"
+                                                            : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200"
+                                                    }`}
+                                                    onClick={() => {
+                                                        setActiveChatSessionId(session.id);
+                                                        if (pathname !== "/") {
+                                                            router.push("/");
+                                                        }
+                                                    }}
+                                                >
+                                                    <div className="flex items-center gap-2 truncate flex-1 mr-1">
+                                                        <MessageSquare size={12} className={isSelected ? "text-brand-navy shrink-0" : "text-zinc-400 shrink-0"} />
+                                                        <span className="truncate">{session.title}</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteChatSession(session.id);
+                                                        }}
+                                                        className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 rounded transition-opacity shrink-0"
+                                                        title="대화 삭제"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                        {chatSessions.length > 10 && (
+                                            <button
+                                                onClick={() => setShowAllSessions(prev => !prev)}
+                                                className="w-full text-center py-1 mt-0.5 text-[11px] font-medium text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                                            >
+                                                {showAllSessions ? "접기" : `+ ${chatSessions.length - 10}개 더보기`}
+                                            </button>
                                         )}
-                                    </div>
-                                );
-                            })}
-                    </nav>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Collapsible: All Menus (전체 메뉴 아래로 펼치기) */}
+                    <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                        <button
+                            onClick={() => setIsAllMenuOpen(prev => !prev)}
+                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-xs sm:text-sm font-bold text-zinc-800 dark:text-zinc-200 border border-zinc-200/60 dark:border-zinc-800 transition-all shadow-sm"
+                        >
+                            <span className="flex items-center gap-2">
+                                <Menu size={16} className="text-brand-navy" />
+                                전체 메뉴 둘러보기
+                            </span>
+                            <span className="flex items-center gap-1 text-[11px] text-zinc-400 font-normal">
+                                {isAllMenuOpen ? "접기" : "펼치기"}
+                                {isAllMenuOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            </span>
+                        </button>
+
+                        {/* All Nested Foldable Menus List */}
+                        {isAllMenuOpen && (
+                            <nav className="space-y-1 mt-2 pl-1 animate-fadeIn">
+                                {menuItems
+                                    .filter(item => canShowMenu(item))
+                                    .map((item) => {
+                                        const Icon = item.icon;
+                                        const filteredSubItems = item.subItems?.filter(sub => canShowSubItem(sub));
+
+                                        if (!item.subItems) {
+                                            const isActive = pathname === item.href;
+                                            return (
+                                                <Link
+                                                    key={item.title}
+                                                    href={item.href!}
+                                                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                                                        isActive
+                                                            ? "bg-brand-navy/10 text-brand-navy dark:bg-brand-navy/20 dark:text-white"
+                                                            : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 hover:text-zinc-900 dark:hover:text-zinc-100"
+                                                    }`}
+                                                >
+                                                    <Icon size={17} />
+                                                    {item.title}
+                                                </Link>
+                                            );
+                                        }
+
+                                        // Foldable subcategory
+                                        const isMenuOpen = openMenus[item.title];
+                                        const isAnyChildActive = item.subItems?.some(
+                                            sub => pathname === sub.href || pathname.startsWith(sub.href + '/')
+                                        );
+
+                                        return (
+                                            <div key={item.title} className="space-y-1">
+                                                <button
+                                                    onClick={() => toggleMenu(item.title)}
+                                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                                                        isAnyChildActive
+                                                            ? "text-brand-navy dark:text-white font-bold"
+                                                            : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2.5">
+                                                        <Icon size={16} className={isAnyChildActive ? "text-brand-navy dark:text-brand-navy-light" : "text-zinc-400"} />
+                                                        {item.title}
+                                                    </div>
+                                                    {isMenuOpen ? (
+                                                        <ChevronDown size={14} className="text-zinc-400" />
+                                                    ) : (
+                                                        <ChevronRight size={14} className="text-zinc-400" />
+                                                    )}
+                                                </button>
+
+                                                {isMenuOpen && (
+                                                    <div className="pl-8 space-y-0.5 mt-0.5 mb-1.5 border-l-2 border-zinc-100 dark:border-zinc-800 ml-3">
+                                                        {filteredSubItems?.map((sub) => {
+                                                            const isSubActive = pathname === sub.href;
+                                                            return (
+                                                                <Link
+                                                                    key={sub.title}
+                                                                    href={sub.href}
+                                                                    onClick={() => {
+                                                                        if (sub.href === "/admin/player-reports") {
+                                                                            sessionStorage.removeItem("gla_report_athlete_id");
+                                                                        }
+                                                                    }}
+                                                                    className={`block px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                                                                        isSubActive
+                                                                            ? "bg-brand-navy/10 text-brand-navy font-bold dark:bg-brand-navy/20 dark:text-white"
+                                                                            : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                                                                    }`}
+                                                                >
+                                                                    {sub.title}
+                                                                </Link>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                            </nav>
+                        )}
+                    </div>
                 </div>
             </aside>
         </>

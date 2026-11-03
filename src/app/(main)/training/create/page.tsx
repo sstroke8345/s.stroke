@@ -156,7 +156,7 @@ function CreateTrainingContent() {
 
         // Fetch current user name
         const supabase = createClient();
-        supabase.auth.getUser().then(async ({ data: { user } }) => {
+        supabase.auth.getUser().then(async ({ data: { user } }: { data: { user: any } }) => {
             if (user) {
                 const { data: dbUser } = await supabase
                     .from("users")

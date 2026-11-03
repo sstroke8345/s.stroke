@@ -71,13 +71,23 @@ export default function CreateLessonPage() {
     );
 }
 
-function CreateLessonContent() {
+export function CreateLessonContent({
+    onClose,
+    initialPlayer,
+    initialPart,
+    isModal = false
+}: {
+    onClose?: () => void;
+    initialPlayer?: string;
+    initialPart?: string;
+    isModal?: boolean;
+} = {}) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const DRAFT_KEY = "lesson_create_draft";
 
     const [searchQuery, setSearchQuery] = useState("");
-    const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+    const [selectedPlayers, setSelectedPlayers] = useState<string[]>(initialPlayer ? [initialPlayer] : []);
     const [isPlayerDropdownOpen, setIsPlayerDropdownOpen] = useState(false);
     const [currentCoachName, setCurrentCoachName] = useState("코치");
     const [isAborting, setIsAborting] = useState(false);
@@ -98,7 +108,7 @@ function CreateLessonContent() {
 
         // Load Draft from SessionStorage
         const draft = sessionStorage.getItem(DRAFT_KEY);
-        if (draft) {
+        if (draft && !initialPlayer) {
             try {
                 const data = JSON.parse(draft);
                 if (data.selectedPlayers) setSelectedPlayers(data.selectedPlayers);
@@ -114,8 +124,8 @@ function CreateLessonContent() {
         }
 
         // 3. Overwrite with Search Params (Highest Priority)
-        const playerParam = searchParams.get("player");
-        const typeParam = searchParams.get("type");
+        const playerParam = initialPlayer || searchParams.get("player");
+        const typeParam = initialPart || searchParams.get("type");
         const startParam = searchParams.get("start");
         const endParam = searchParams.get("end");
 
@@ -135,7 +145,7 @@ function CreateLessonContent() {
 
         // 3. RBAC & Coach Info
         const supabase = createClient();
-        supabase.auth.getUser().then(async ({ data: { user } }) => {
+        supabase.auth.getUser().then(async ({ data: { user } }: { data: { user: any } }) => {
             if (user) {
                 const { data: dbUser } = await supabase
                     .from("users")
@@ -487,7 +497,11 @@ function CreateLessonContent() {
                 router.push(`/training/create?player=${lastPlayer}&type=${selectedPart}&date=${lessonDate}&start=${startSlot}`);
             } else {
                 alert(`${selectedPlayers.length}명의 레슨이 등록되었습니다.`);
-                router.push("/lessons");
+                if (isModal && onClose) {
+                    onClose();
+                } else {
+                    router.push("/lessons");
+                }
             }
         } catch (err: any) {
             console.error("Lesson registration detailed error:", err);
@@ -499,21 +513,39 @@ function CreateLessonContent() {
     };
 
     return (
-        <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 px-4 sm:px-8 py-6">
+        <div className={cn("bg-zinc-50 dark:bg-zinc-950", isModal ? "p-3 sm:p-6" : "min-h-screen px-4 sm:px-8 py-6")}>
             <div className="max-w-3xl mx-auto">
 
                 {/* ── Header ── */}
-                <div className="flex items-center gap-3 mb-8">
-                    <button
-                        onClick={handleAbort}
-                        className="p-2 -ml-2 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-50 transition-colors"
-                    >
-                        <ChevronLeft size={24} />
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <BookOpen size={24} className="text-brand-navy dark:text-brand-navy-light shrink-0" />
-                        <PageTitle>레슨 작성</PageTitle>
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (isModal && onClose) {
+                                    onClose();
+                                } else {
+                                    handleAbort();
+                                }
+                            }}
+                            className="p-2 -ml-2 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-900 dark:text-zinc-50 transition-colors"
+                        >
+                            {isModal ? <X size={22} /> : <ChevronLeft size={24} />}
+                        </button>
+                        <div className="flex items-center gap-2">
+                            <BookOpen size={24} className="text-brand-navy dark:text-brand-navy-light shrink-0" />
+                            <PageTitle>레슨 작성</PageTitle>
+                        </div>
                     </div>
+                    {isModal && onClose && (
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-zinc-200/70 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
+                        >
+                            닫기
+                        </button>
+                    )}
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-8">
@@ -803,7 +835,13 @@ function CreateLessonContent() {
                     <div className="flex flex-row items-center justify-between sm:justify-end gap-1.5 sm:gap-3 pt-4 border-t border-zinc-200 dark:border-zinc-800 w-full">
                         <button
                             type="button"
-                            onClick={handleAbort}
+                            onClick={() => {
+                                if (isModal && onClose) {
+                                    onClose();
+                                } else {
+                                    handleAbort();
+                                }
+                            }}
                             disabled={isUploading}
                             className="px-3 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
                         >

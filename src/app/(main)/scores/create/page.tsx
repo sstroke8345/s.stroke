@@ -198,18 +198,22 @@ function ScoreCreateContent() {
         const checkInitialData = async () => {
             try {
                 const supabase = createClient();
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const { data: userData } = await supabase
-                        .from("users")
-                        .select("name, role")
-                        .eq("id", user.id)
-                        .single();
-                        
-                    if (userData) {
-                        // Always set the default player to themselves
-                        setSelectedPlayer(userData.name);
-                        setUserRole(userData.role || '');
+                const playerParam = searchParams.get("player");
+                if (playerParam) {
+                    setSelectedPlayer(playerParam);
+                } else {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                        const { data: userData } = await supabase
+                            .from("users")
+                            .select("name, role")
+                            .eq("id", user.id)
+                            .single();
+                            
+                        if (userData) {
+                            setSelectedPlayer(userData.name);
+                            setUserRole(userData.role || '');
+                        }
                     }
                 }
 

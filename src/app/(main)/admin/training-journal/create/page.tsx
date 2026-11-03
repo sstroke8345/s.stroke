@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useRef, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
     ChevronLeft,
@@ -32,12 +32,23 @@ const mockPlayers = ["이수진", "최민준", "김지윤", "박도윤", "이지
 
 type ShotType = "good" | "miss";
 
+export const dynamic = "force-dynamic";
+
 export default function CreateJournalPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center text-zinc-400">페이지 로딩 중...</div>}>
+            <CreateJournalContent />
+        </Suspense>
+    );
+}
+
+function CreateJournalContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
 
     // ── Form State ──────────────────────────────────────────────────
     const [searchQuery, setSearchQuery] = useState("");
-    const [selectedPlayer, setSelectedPlayer] = useState("");
+    const [selectedPlayer, setSelectedPlayer] = useState(() => searchParams.get("player") || "");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [trainingDate, setTrainingDate] = useState(() =>
         formatLocalDate()
@@ -57,6 +68,11 @@ export default function CreateJournalPage() {
     const JOURNAL_TEMP_KEY = "journal_create_temp";
 
     useEffect(() => {
+        const playerParam = searchParams.get("player");
+        if (playerParam) {
+            setSelectedPlayer(playerParam);
+            return;
+        }
         const temp = sessionStorage.getItem(JOURNAL_TEMP_KEY);
         if (temp) {
             try {
@@ -68,7 +84,7 @@ export default function CreateJournalPage() {
                 if (data.content) setContent(data.content);
             } catch (e) { }
         }
-    }, []);
+    }, [searchParams]);
 
     const isInitialMount = useRef(true);
 
@@ -95,25 +111,25 @@ export default function CreateJournalPage() {
     }, [shotType, selectedPlayer, trainingDate]);
 
     useEffect(() => {
-        const supabase = createClient();
-        supabase.auth.getUser().then(({ data: { user } }) => {
+        const fetchUser = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 setCurrentUserId(user.id);
-                supabase.from("users")
+                const { data } = await supabase.from("users")
                     .select("role, name")
                     .eq("id", user.id)
-                    .single()
-                    .then(({ data }) => {
-                        if (data) {
-                            setUserRole(data.role);
-                            setCurrentUserName(data.name);
-                            if (data.role === "athlete") {
-                                setSelectedPlayer(data.name);
-                            }
-                        }
-                    });
+                    .single();
+                if (data) {
+                    setUserRole(data.role);
+                    setCurrentUserName(data.name);
+                    if (data.role === "athlete") {
+                        setSelectedPlayer(data.name);
+                    }
+                }
             }
-        });
+        };
+        fetchUser();
     }, []);
 
     // ── Player Filter ────────────────────────────────────────────────
