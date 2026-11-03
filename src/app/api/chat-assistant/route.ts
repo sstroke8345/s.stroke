@@ -244,9 +244,10 @@ export async function POST(req: NextRequest) {
 [메시지]: "${message}"
 `;
 
-    // 가장 빠르고 안정적인 모델 순으로 배치
+    // 가장 빠르고 지연시간(Latency)이 짧은 초경량 무료 모델 우선 배치
     const candidateModels = [
-      process.env.GEMINI_MODEL || "gemini-3.5-flash",
+      process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
+      "gemini-3.5-flash-lite",
       "gemini-3.5-flash",
       "gemini-flash-latest"
     ];
@@ -258,7 +259,7 @@ export async function POST(req: NextRequest) {
     for (const model of candidateModels) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8초 단축
+        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6초 빠른 전환
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -280,6 +281,7 @@ export async function POST(req: NextRequest) {
               ],
               generationConfig: {
                 temperature: 0.2, // 더 빠르고 결정론적인 답변
+                maxOutputTokens: 800, // 토큰 길이 제한으로 생성 속도 대폭 향상
                 responseMimeType: "application/json"
               }
             })
