@@ -10,8 +10,10 @@ export interface ChatSessionItem {
 
 const STORAGE_KEY_SESSIONS = "s_stroke_chat_sessions_v1";
 const STORAGE_KEY_ACTIVE_ID = "s_stroke_active_chat_id";
+const MAX_SESSIONS = 30; // 최대 대화 세션 수
+const MAX_MESSAGES_PER_SESSION = 30; // 세션당 최대 메시지 수
 
-// Get all saved chat sessions sorted by updatedAt descending
+// Get all saved chat sessions sorted by updatedAt descending (최대 30개 보장)
 export function getSavedChatSessions(): ChatSessionItem[] {
     if (typeof window === "undefined") return [];
     try {
@@ -19,7 +21,13 @@ export function getSavedChatSessions(): ChatSessionItem[] {
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-            return parsed.sort((a, b) => b.updatedAt - a.updatedAt);
+            const sorted = parsed.sort((a, b) => b.updatedAt - a.updatedAt);
+            if (sorted.length > MAX_SESSIONS) {
+                const trimmed = sorted.slice(0, MAX_SESSIONS);
+                localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(trimmed));
+                return trimmed;
+            }
+            return sorted;
         }
     } catch (e) {
         console.error("Failed to parse chat sessions:", e);
@@ -68,12 +76,14 @@ export function saveChatSession(sessionId: string, messages: any[], customTitle?
 
     const now = Date.now();
     let updatedItem: ChatSessionItem;
+    // 대화방 내부 메시지도 최근 30개까지만 보관 (오래된 메시지 자동 정리)
+    const trimmedMessages = Array.isArray(messages) ? messages.slice(-MAX_MESSAGES_PER_SESSION) : [];
 
     if (existingIndex >= 0) {
         updatedItem = {
             ...sessions[existingIndex],
             title: title || sessions[existingIndex].title,
-            messages,
+            messages: trimmedMessages,
             updatedAt: now,
         };
         sessions[existingIndex] = updatedItem;
@@ -83,12 +93,17 @@ export function saveChatSession(sessionId: string, messages: any[], customTitle?
             title: title || "새 코칭 대화",
             createdAt: now,
             updatedAt: now,
-            messages,
+            messages: trimmedMessages,
         };
         sessions.unshift(updatedItem);
     }
 
-    localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions.slice(0, 30)));
+    // 최신 순으로 정렬 후 최대 30개만 남기고 나머지는 자동 영구 삭제 (FIFO)
+    const trimmedSessions = sessions
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, MAX_SESSIONS);
+
+    localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(trimmedSessions));
     localStorage.setItem(STORAGE_KEY_ACTIVE_ID, sessionId);
     window.dispatchEvent(new CustomEvent("s_stroke_chat_history_updated"));
     return updatedItem;

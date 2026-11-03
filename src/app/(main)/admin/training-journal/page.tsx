@@ -70,7 +70,7 @@ export default function TrainingJournalPage() {
 
             // Fetch Athletes for filter
             if (['coach', 'admin', 'office', 'total', 'superadmin'].includes(currentRole)) {
-                const { data: athletesData } = await supabase.from("users").select("name").eq("role", "athlete").order("name");
+                const { data: athletesData } = await supabase.from("users").select("name").in("role", ["athlete", "coach", "admin"]).order("name");
                 if (athletesData) {
                     const athleteNames = athletesData.map((a: any) => a.name);
                     setAllAthletes(athleteNames);
@@ -132,7 +132,7 @@ export default function TrainingJournalPage() {
             const { data: recentData } = await recentQuery;
             if (recentData) setRecentJournals(recentData.map(mapJournalRow));
             
-            if (currentRole === 'athlete') setIsLoading(false);
+            setIsLoading(false);
         };
         
         loadInitial();
@@ -140,7 +140,7 @@ export default function TrainingJournalPage() {
 
     // Server-side Pagination & Filtering
     useEffect(() => {
-        if (isLoading && ['coach', 'admin', 'office', 'headquarter', 'total', 'superadmin'].includes(userRole) && allAthletes.length === 0) return; // Wait until athletes load
+        if (isLoading) return;
 
         const fetchFiltered = async () => {
             const supabase = createClient();

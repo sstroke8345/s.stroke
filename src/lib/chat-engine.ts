@@ -241,7 +241,28 @@ export const ALL_SYSTEM_NAV_ROUTES: NavRoute[] = [
 
 export function findSystemNavRoute(text: string): NavRoute | null {
     const t = text.toLowerCase().replace(/\s+/g, "");
+
+    // 외부 웹사이트/홈페이지 문의나 협회/연맹, 질문형 단어는 시스템 내부 이동에서 제외 (Gemini AI로 전달)
+    if (
+        t.includes("홈페이지") || 
+        t.includes("웹사이트") || 
+        t.includes("사이트") || 
+        t.includes("협회") || 
+        t.includes("연맹") || 
+        t.includes("링크")
+    ) {
+        return null;
+    }
+
     for (const route of ALL_SYSTEM_NAV_ROUTES) {
+        // '홈'이나 '메인' 같은 초단기 키워드는 문맥상 홈페이지/홈런 등이 아닌 단독/명확한 이동일 때만 매칭
+        if (route.href === "/") {
+            if (t === "홈" || t === "메인" || t === "홈화면" || t === "메인화면" || t === "처음으로" || t === "첫화면" || t === "홈으로" || t === "메인으로") {
+                return route;
+            }
+            continue;
+        }
+
         if (route.keywords.some(k => t.includes(k.replace(/\s+/g, "")))) {
             return route;
         }
@@ -333,7 +354,7 @@ export function detectIntent(text: string): IntentType {
     const t = text.toLowerCase().replace(/\s+/g, "");
 
     // 1. 조회 / 목록 관련 (명확한 조회 키워드가 포함된 경우만)
-    const isExplicitQuery = t.includes("조회") || t.includes("목록") || t.includes("현황") || t.includes("내역");
+    const isExplicitQuery = t.includes("조회") || t.includes("목록") || t.includes("현황") || t.includes("내역") || t.includes("검색") || t.includes("찾아") || t.includes("보기") || t.includes("피드");
     if (isExplicitQuery) {
         if (t.includes("레슨")) return "VIEW_LESSONS";
         if (t.includes("훈련") || t.includes("과제")) return "VIEW_TRAININGS";
@@ -352,7 +373,12 @@ export function detectIntent(text: string): IntentType {
         if (t.includes("훈련") || t.includes("과제")) return "CREATE_TRAINING";
     }
 
-    // 3. 시스템 메뉴 이동 감지 (화면, 이동, 가줘, 열어줘 또는 단독 메뉴 키워드)
+    // 3. 외부 웹사이트/홈페이지, 협회/연맹 등 정보 검색 질문은 내부 이동 감지에서 완전 제외 -> Gemini AI에게 위임
+    if (t.includes("홈페이지") || t.includes("웹사이트") || t.includes("사이트") || t.includes("협회") || t.includes("연맹") || t.includes("알려줘") || t.includes("주소")) {
+        return "UNKNOWN";
+    }
+
+    // 4. 시스템 메뉴 이동 감지 (화면, 이동, 가줘, 열어줘 또는 단독 메뉴 키워드)
     const isNavAction = t.includes("이동") || t.includes("가줘") || t.includes("열어") || t.includes("화면") || t.includes("페이지") || t.includes("보여줘");
     
     // 3-1. 대분류 카테고리 (예: 시스템 관리, 운영 관리 등) 감지
@@ -402,7 +428,7 @@ export function processInitialMessage(
                 message: "어떤 선수의 작업을 진행할까요? 아래에서 선수를 선택하거나 이름을 말씀해주세요.",
                 options,
                 showInput: true,
-                inputPlaceholder: "선수 이름 입력 (예: 황정욱)..."
+                inputPlaceholder: "선수 이름 입력 (예: 000)..."
             }
         };
     }
@@ -640,7 +666,7 @@ export function handleIntentNextStep(state: ChatSessionState, input: string): { 
                 response: {
                     message: "코치님, 원하시는 작업이나 질문을 말씀해주세요.",
                     showInput: true,
-                    inputPlaceholder: "예: 황정욱 어프로치 레슨 작성, 김민수 훈련 등록, 시스템 관리..."
+                    inputPlaceholder: "예: 000 어프로치 레슨 작성, 000 훈련 등록, 시스템 관리..."
                 }
             };
         }

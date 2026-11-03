@@ -20,7 +20,26 @@ import {
     NavigateCard 
 } from "./ChatActionCards";
 import { CreateLessonContent } from "@/app/(main)/lessons/create/page";
-import { Send, Mic, MicOff, Sparkles, RefreshCw, Bot, User as UserIcon, Loader2, X, ExternalLink, Search, BookOpen } from "lucide-react";
+import { 
+    Send, 
+    Mic, 
+    MicOff, 
+    Sparkles, 
+    RefreshCw, 
+    Bot, 
+    User as UserIcon, 
+    Loader2, 
+    X, 
+    ExternalLink, 
+    Search, 
+    BookOpen,
+    ArrowDown,
+    ThumbsUp,
+    ThumbsDown,
+    Copy,
+    Check,
+    MoreHorizontal
+} from "lucide-react";
 
 import { 
     getSavedChatSessions, 
@@ -44,6 +63,109 @@ interface ChatFeedProps {
     onHistoryUpdate?: (history: ChatMessage[]) => void;
 }
 
+// Gemini 인라인 토큰 파서 (URL, 출처 뱃지, 볼드체, 인라인 코드)
+function parseInlineGeminiTokens(text: string): React.ReactNode[] {
+    if (!text) return [];
+
+    // URL, [출처 뱃지], **볼드**, `코드`
+    const regex = /(https?:\/\/[^\s\)\],]+|\[[가-힣A-Za-z0-9\s\.\-]{2,24}\](?!\()|\*\*[^*]+\*\*|`[^`]+`)/g;
+    const parts = text.split(regex);
+
+    return parts.map((part, index) => {
+        if (!part) return null;
+
+        // 1. URL (클릭 가능한 웹사이트 링크)
+        if (/^https?:\/\//.test(part)) {
+            return (
+                <a
+                    key={index}
+                    href={part}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 dark:text-blue-400 font-semibold underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center gap-0.5 mx-0.5 break-all"
+                >
+                    {part}
+                    <ExternalLink size={12} className="inline shrink-0 opacity-70" />
+                </a>
+            );
+        }
+
+        // 2. 출처/기관 뱃지 e.g. [한국대학골프연맹]
+        if (/^\[[가-힣A-Za-z0-9\s\.\-]{2,24}\]$/.test(part)) {
+            const badgeContent = part.slice(1, -1);
+            return (
+                <span
+                    key={index}
+                    className="inline-flex items-center px-2 py-0.5 mx-1 my-0.5 text-[11px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-full border border-zinc-200/80 dark:border-zinc-700 select-all align-middle shadow-xs"
+                >
+                    {badgeContent}
+                </span>
+            );
+        }
+
+        // 3. 볼드체 e.g. **공식 웹사이트**
+        if (/^\*\*[^*]+\*\*$/.test(part)) {
+            return (
+                <strong key={index} className="font-bold text-zinc-900 dark:text-zinc-100">
+                    {part.slice(2, -2)}
+                </strong>
+            );
+        }
+
+        // 4. 인라인 코드 e.g. `code`
+        if (/^`[^`]+`$/.test(part)) {
+            return (
+                <code key={index} className="px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-brand-navy dark:text-blue-300 rounded text-xs font-mono">
+                    {part.slice(1, -1)}
+                </code>
+            );
+        }
+
+        // 일반 텍스트
+        return <span key={index}>{part}</span>;
+    });
+}
+
+// Gemini 스타일 마크다운 블록 렌더러
+function GeminiMarkdownRenderer({ text }: { text: string }) {
+    if (!text) return null;
+    const lines = text.split("\n");
+
+    return (
+        <div className="space-y-1.5 leading-relaxed">
+            {lines.map((line, lIdx) => {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    return <div key={lIdx} className="h-1.5" />;
+                }
+
+                // 글머리 기호(•, -, *, ㅇ, o, 1., 2.) 목록 감지
+                const bulletMatch = trimmed.match(/^([•\-\*ㅇo]|\d+\.)\s+/);
+                if (bulletMatch) {
+                    const bulletSymbol = bulletMatch[1];
+                    const contentAfterBullet = trimmed.slice(bulletMatch[0].length);
+                    return (
+                        <div key={lIdx} className="pl-1.5 flex items-start gap-1.5 my-0.5">
+                            <span className="text-zinc-400 dark:text-zinc-500 font-semibold shrink-0 select-none">
+                                {bulletSymbol === "ㅇ" || bulletSymbol === "o" ? "○" : bulletSymbol}
+                            </span>
+                            <div className="flex-1">
+                                {parseInlineGeminiTokens(contentAfterBullet)}
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div key={lIdx} className="my-0.5">
+                        {parseInlineGeminiTokens(line)}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 function TypewriterText({ text }: { text: string }) {
     const [displayed, setDisplayed] = useState("");
     const fullTextRef = useRef(text);
@@ -54,7 +176,7 @@ function TypewriterText({ text }: { text: string }) {
         setDisplayed("");
 
         // 한 번에 출력할 글자 수 (긴 글은 더 빠르게 4~6글자씩 부드럽게)
-        const step = text.length > 300 ? 5 : (text.length > 100 ? 3 : 2);
+        const step = text.length > 300 ? 6 : (text.length > 100 ? 4 : 2);
         const timer = setInterval(() => {
             currentIdx += step;
             if (currentIdx >= fullTextRef.current.length) {
@@ -68,13 +190,15 @@ function TypewriterText({ text }: { text: string }) {
         return () => clearInterval(timer);
     }, [text]);
 
+    const isTyping = displayed.length < text.length;
+
     return (
-        <span>
-            {displayed}
-            {displayed.length < text.length && (
+        <div className="relative">
+            <GeminiMarkdownRenderer text={displayed} />
+            {isTyping && (
                 <span className="inline-block w-1.5 h-3.5 bg-blue-500 ml-0.5 animate-pulse rounded-sm align-middle" />
             )}
-        </span>
+        </div>
     );
 }
 
@@ -106,7 +230,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
     const [sessionState, setSessionState] = useState<ChatSessionState | null>(null);
     const [isListening, setIsListening] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [placeholder, setPlaceholder] = useState("예: 황정욱 어프로치 레슨 작성, 김민수 훈련 등록...");
+    const [placeholder, setPlaceholder] = useState("예: 000 어프로치 레슨 작성, 000 훈련 등록...");
     const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
     const [modalAthlete, setModalAthlete] = useState<string>("");
     const [modalPart, setModalPart] = useState<string>("shot");
@@ -115,8 +239,32 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
     const [isAthleteSearchOpen, setIsAthleteSearchOpen] = useState(false);
     const [athleteSearchQuery, setAthleteSearchQuery] = useState("");
 
+    // Gemini UI 인터랙션 (스크롤 하단 버튼 및 복사 피드백)
+    const [showScrollBottom, setShowScrollBottom] = useState(false);
+    const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null);
+
+    const handleScroll = () => {
+        if (!scrollContainerRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+        const isNotBottom = scrollHeight - scrollTop - clientHeight > 60;
+        setShowScrollBottom(isNotBottom);
+    };
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        setShowScrollBottom(false);
+    };
+
+    const handleCopyText = (id: string, text: string) => {
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+            navigator.clipboard.writeText(text);
+            setCopiedMsgId(id);
+            setTimeout(() => setCopiedMsgId(null), 2000);
+        }
+    };
 
     // 1. Initial greeting, load athletes, and listen for session changes
     useEffect(() => {
@@ -278,27 +426,52 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                             return;
                         }
 
-                        // 2. 메뉴 이동 인텐트인 경우 (NAVIGATE)
-                        if (aiResult.intent === "NAVIGATE") {
+                        // 2. 화면 이동 및 메뉴 조회 인텐트인 경우 (VIEW_LESSONS, VIEW_TRAININGS, VIEW_SCORES, NAVIGATE)
+                        const isNavigationOrView = ["NAVIGATE", "VIEW_LESSONS", "VIEW_TRAININGS", "VIEW_SCORES"].includes(aiResult.intent);
+                        if (isNavigationOrView) {
                             const newInit = processInitialMessage(text, athletes);
-                            const finalUrl = aiResult.targetUrl || newInit.nextState.targetUrl || "/";
-                            const finalTitle = aiResult.title || newInit.nextState.targetTitle || "해당 메뉴";
+                            const athleteName = aiResult.athleteName || newInit.nextState.athleteName || "";
+                            let finalUrl = aiResult.targetUrl || newInit.nextState.targetUrl || "/";
+                            let finalTitle = aiResult.title || newInit.nextState.targetTitle || "해당 메뉴";
+
+                            if (aiResult.intent === "VIEW_LESSONS") {
+                                finalUrl = athleteName ? `/lessons?athlete=${encodeURIComponent(athleteName)}` : "/lessons";
+                                finalTitle = athleteName ? `${athleteName} 선수 레슨 내역` : "레슨 목록";
+                            } else if (aiResult.intent === "VIEW_TRAININGS") {
+                                finalUrl = athleteName ? `/training?athlete=${encodeURIComponent(athleteName)}` : "/training";
+                                finalTitle = athleteName ? `${athleteName} 선수 훈련 내역` : "훈련 목록";
+                            } else if (aiResult.intent === "VIEW_SCORES") {
+                                finalUrl = athleteName ? `/scores?athlete=${encodeURIComponent(athleteName)}` : "/scores";
+                                finalTitle = athleteName ? `${athleteName} 선수 스코어 내역` : "스코어 현황";
+                            }
+
                             const navState: ChatSessionState = {
                                 intent: "NAVIGATE",
                                 step: "NAVIGATE",
                                 targetUrl: finalUrl,
-                                targetTitle: finalTitle
+                                targetTitle: finalTitle,
+                                athleteName: athleteName || undefined
                             };
                             setSessionState(navState);
+
                             const botMsg: ChatMessage = {
                                 id: `bot_${Date.now()}`,
                                 sender: "bot",
                                 text: aiResult.replyMessage || `**${finalTitle}** 화면으로 이동합니다.`,
                                 actionCard: "NAVIGATE_CARD",
+                                options: [
+                                    { label: `👉 ${finalTitle} 바로 열기`, value: finalUrl, accent: true },
+                                    { label: "🏠 홈 화면", value: "/" }
+                                ],
                                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                             };
                             setMessages(prev => [...prev, botMsg]);
                             setIsLoading(false);
+
+                            // 🚀 메뉴로 자동 진입 (화면 깜빡임 없이 매끄럽게 페이지 이동)
+                            setTimeout(() => {
+                                router.push(finalUrl);
+                            }, 600);
                             return;
                         }
 
@@ -329,6 +502,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                 sender: "bot",
                                 text: aiResult.replyMessage || newInit.response.message,
                                 actionCard: newInit.response.actionCard,
+                                options: newInit.response.options,
                                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                             };
                             setMessages(prev => [...prev, botMsg]);
@@ -371,6 +545,13 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
             setModalAthlete(result.nextState.athleteName || "");
             setModalPart(result.nextState.lessonCategory || "shot");
             setIsLessonModalOpen(true);
+        }
+
+        // Auto-navigate for VIEW / NAVIGATE intents
+        if (result.nextState.targetUrl && (result.nextState.intent === "NAVIGATE" || result.nextState.intent === "VIEW_LESSONS" || result.nextState.intent === "VIEW_TRAININGS" || result.nextState.intent === "VIEW_SCORES")) {
+            setTimeout(() => {
+                router.push(result.nextState.targetUrl!);
+            }, 600);
         }
 
         // Add Bot Response
@@ -428,7 +609,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
         };
         setMessages(prev => [...prev, completeMsg]);
         setSessionState(null);
-        setPlaceholder("예: 황정욱 어프로치 레슨 작성, 김민수 훈련 등록...");
+        setPlaceholder("예: 000 어프로치 레슨 작성, 000 훈련 등록...");
     };
 
     const handleResetChat = () => {
@@ -463,7 +644,11 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
             )}
 
             {/* Chat Messages / Centered Empty State */}
-            <div className="flex-1 overflow-y-auto space-y-4 pb-28 pt-1">
+            <div 
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto space-y-6 pb-36 pt-2 px-1 scroll-smooth"
+            >
                 {isHistoryEmpty ? (
                     <div className="h-full flex flex-col items-center justify-center text-center px-2 select-none my-auto py-6 sm:py-10 max-w-xl mx-auto">
                         {/* Gemini Aura Background Light & Glowing Icon */}
@@ -481,8 +666,6 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                             </span>
                             , 무엇을 작성할까요?
                         </h1>
-
-
 
                         {/* Secondary Quick Micro Chips */}
                         <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
@@ -504,42 +687,82 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                 ) : (
                     messages.map((msg, idx) => {
                         const isLatestBotMsg = msg.sender === "bot" && idx === messages.length - 1;
+                        
+                        // ── 1. USER MESSAGE (제미나이 스타일 우측 둥근 말풍선) ──
+                        if (msg.sender === "user") {
+                            return (
+                                <div key={msg.id} className="flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[75%] space-y-1">
+                                    <div className="bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3 rounded-[1.5rem] text-xs sm:text-sm leading-relaxed whitespace-pre-wrap select-text shadow-sm">
+                                        {msg.text}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 px-2 text-[10px] text-zinc-400">
+                                        <span>{msg.timestamp}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCopyText(msg.id, msg.text)}
+                                            className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-0.5"
+                                            title="텍스트 복사"
+                                        >
+                                            {copiedMsgId === msg.id ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        // ── 2. BOT / GEMINI RESPONSE (말풍선 없이 깔끔한 와이드 문서형 + 하단 액션 버튼) ──
                         return (
-                            <div
-                                key={msg.id}
-                                className={`flex gap-2.5 max-w-[92%] sm:max-w-[85%] ${
-                                    msg.sender === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
-                                }`}
-                            >
-                                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs shadow-sm ${
-                                    msg.sender === "user" 
-                                        ? "bg-brand-navy text-white" 
-                                        : "bg-gradient-to-tr from-blue-600 to-indigo-500 text-white"
-                                }`}>
-                                    {msg.sender === "user" ? <UserIcon size={14} /> : <Sparkles size={14} />}
+                            <div key={msg.id} className="w-full mr-auto space-y-3 py-1 text-zinc-900 dark:text-zinc-100">
+                                <div className="text-xs sm:text-sm leading-relaxed select-text">
+                                    {isLatestBotMsg ? (
+                                        <TypewriterText text={msg.text} />
+                                    ) : (
+                                        <GeminiMarkdownRenderer text={msg.text} />
+                                    )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <div className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
-                                        msg.sender === "user"
-                                            ? "bg-brand-navy text-white rounded-tr-none"
-                                            : "bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 border border-zinc-100 dark:border-zinc-800 rounded-tl-none"
-                                    }`}>
-                                        {msg.sender === "bot" && isLatestBotMsg ? (
-                                            <TypewriterText text={msg.text} />
-                                        ) : (
-                                            msg.text
-                                        )}
-                                    </div>
+                                {/* Gemini-Style Subtle Action Bar (👍, 👎, 📋, ⋯) */}
+                                <div className="flex items-center gap-1 pt-1 text-zinc-400">
+                                    <button 
+                                        type="button" 
+                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                                        title="좋은 답변"
+                                    >
+                                        <ThumbsUp size={13} />
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                                        title="아쉬운 답변"
+                                    >
+                                        <ThumbsDown size={13} />
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => handleCopyText(msg.id, msg.text)}
+                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors flex items-center gap-1"
+                                        title="답변 복사"
+                                    >
+                                        {copiedMsgId === msg.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                                        title="더보기"
+                                    >
+                                        <MoreHorizontal size={13} />
+                                    </button>
+                                    <span className="text-[10px] text-zinc-400 ml-2">{msg.timestamp}</span>
+                                </div>
 
-                                {/* Hide quick chips if an action card is active to avoid UI duplication */}
+                                {/* Quick Choice Chips */}
                                 {!msg.actionCard && msg.options && msg.options.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5 pt-1">
                                         {msg.options.map((opt, idx) => (
                                             <button
                                                 key={idx}
                                                 onClick={() => handleOptionClick(opt)}
-                                                className={`px-3 py-1.5 rounded-2xl text-xs font-semibold transition-all shadow-sm ${
+                                                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm ${
                                                     opt.accent
                                                         ? "bg-brand-navy text-white hover:bg-brand-navy-dark shadow-brand-navy/10 scale-[1.02]"
                                                         : "bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-brand-navy/40 hover:bg-zinc-50"
@@ -552,9 +775,9 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                     </div>
                                 )}
 
+                                {/* Dedicated Action Cards (Modal/Forms) */}
                                 {msg.actionCard === "LESSON_FORM" && sessionState && (
                                     <div className="w-full">
-                                        {/* Direct launcher for Official Lesson Modal */}
                                         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-sm space-y-3">
                                             <div className="flex items-center justify-between">
                                                 <h4 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
@@ -618,30 +841,34 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                 {msg.actionCard === "NAVIGATE_CARD" && sessionState && (
                                     <NavigateCard session={sessionState} />
                                 )}
-
-                                <span className="block text-[10px] text-zinc-400 px-1">
-                                    {msg.timestamp}
-                                </span>
                             </div>
-                        </div>
-                    );
+                        );
                     })
                 )}
 
-                {/* AI Thinking / Loading Bubble */}
+                {/* AI Thinking / Loading State */}
                 {isLoading && (
-                    <div className="flex gap-2.5 max-w-[85%] mr-auto items-center">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs shadow-sm bg-gradient-to-tr from-blue-600 to-indigo-500 text-white animate-spin">
-                            <Sparkles size={14} />
-                        </div>
-                        <div className="p-3.5 rounded-3xl rounded-tl-none bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-2 shadow-sm">
-                            <Loader2 size={13} className="animate-spin text-blue-500" />
-                            <span>답변을 생성하고 있습니다...</span>
-                        </div>
+                    <div className="w-full mr-auto py-2 flex items-center gap-2 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
+                        <Sparkles size={15} className="text-blue-500 animate-spin" />
+                        <span className="animate-pulse">답변을 생성하고 있습니다...</span>
                     </div>
                 )}
                 <div ref={messagesEndRef} />
             </div>
+
+            {/* Scroll to Bottom Floating Action Button (Gemini Style) */}
+            {showScrollBottom && (
+                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 animate-bounce">
+                    <button
+                        type="button"
+                        onClick={scrollToBottom}
+                        className="w-9 h-9 rounded-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-lg flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all hover:scale-105 active:scale-95"
+                        title="최신 내용 보기"
+                    >
+                        <ArrowDown size={16} />
+                    </button>
+                </div>
+            )}
 
             {/* Gemini-Style Bottom Gradient Fade Mask (텍스트가 입력창 뒤로 스크롤될 때 부드럽게 페이드아웃) */}
             <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-36 bg-gradient-to-t from-zinc-50 via-zinc-50/90 to-transparent dark:from-zinc-950 dark:via-zinc-950/90 dark:to-transparent z-10" />

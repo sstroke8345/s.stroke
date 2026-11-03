@@ -203,6 +203,15 @@ export default function LessonsPage() {
                 setSelectedPlayers(initialSelectedPlayers);
             }
 
+            // URL 쿼리 파라미터 (?athlete= 또는 ?q=) 로 진입 시 검색어 자동 적용
+            if (typeof window !== 'undefined') {
+                const urlParams = new URLSearchParams(window.location.search);
+                const athleteParam = urlParams.get("athlete") || urlParams.get("q");
+                if (athleteParam && athleteParam.trim() && athleteParam !== "선수") {
+                    setSearchQuery(athleteParam.trim());
+                }
+            }
+
             let currentRole = "athlete";
             if (user) {
                 const { data: dbUser } = await supabase

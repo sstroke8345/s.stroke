@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Edit2, Flag, Image as ImageIcon, MapPin, Search, Trash2, Upload, Video, X, FileText, User, Circle, CornerDownRight, Plus, Check, ChevronDown, ChevronUp, Paperclip } from "lucide-react";
+import { BookOpen, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Edit2, Flag, Image as ImageIcon, MapPin, Search, Trash2, Upload, Video, X, FileText, User, Circle, CornerDownRight, Plus, Check, ChevronDown, ChevronUp, Paperclip, Pencil, Sparkles, Loader2 } from "lucide-react";
 import { CategoryTabs } from "@/components/ui/CategoryTabs";
 import { FileUploadButton } from "@/components/ui/FileUploadButton";
 import { PageTitle, SectionTitle, LabelText, BodyText, Caption } from "@/components/ui/Typography";
@@ -226,6 +226,40 @@ export function CreateLessonContent({
 
     const [selectedPart, setSelectedPart] = useState<string>("shot");
     const [lessonContent, setLessonContent] = useState("");
+    const [isAiRefining, setIsAiRefining] = useState(false);
+
+    const handleAiRefineLesson = async () => {
+        if (!lessonContent || !lessonContent.trim()) {
+            alert("정리할 레슨 내용을 먼저 간단히 입력해 주세요.\n(예: 어프로치 거리 조절 미흡, 백스윙 궤도 수정)");
+            return;
+        }
+
+        setIsAiRefining(true);
+        try {
+            const res = await fetch("/api/refine-lesson", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    content: lessonContent,
+                    athleteName: selectedPlayers.join(", ") || "",
+                    part: selectedPart || ""
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.refinedText) {
+                throw new Error(data.error || "AI 정리 요청에 실패했습니다.");
+            }
+
+            setLessonContent(data.refinedText);
+        } catch (err: any) {
+            console.error("AI refine error:", err);
+            alert(err.message || "AI 레슨 정리에 실패했습니다.");
+        } finally {
+            setIsAiRefining(false);
+        }
+    };
+
     const [dbTemplates, setDbTemplates] = useState<LessonTemplate[]>([]);
     const [isTemplateDropdownOpen, setIsTemplateDropdownOpen] = useState(false);
     const templateDropdownRef = useRef<HTMLDivElement>(null);
@@ -814,21 +848,38 @@ export function CreateLessonContent({
                             <p>* 최근 레슨 내용 확인 및 진행사항 점검</p>
                             <p>* 레슨 목표 방향에 맞는 레슨 내용 작성</p>
                         </div>
-                        <div className="flex flex-col gap-2">
+                        <div className="relative">
                             <textarea
-                                rows={6}
+                                rows={7}
                                 value={lessonContent}
                                 onChange={(e) => setLessonContent(e.target.value)}
-                                placeholder=""
-                                className="w-full p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-brand-navy/40 transition-all resize-y"
+                                placeholder="레슨 내용을 간략하게 적은 후, 우측 하단 AI 연필 버튼을 누르면 전문적이고 조리 있게 정리해 드립니다."
+                                className="w-full p-4 pr-4 pb-12 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-brand-navy/40 transition-all resize-y leading-relaxed"
                             />
-                            {!connectedLessonId && (
-                                <div className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-zinc-500 dark:text-zinc-400 text-sm">
-                                    <X size={16} className="shrink-0 text-zinc-400" />
-                                    <span className="flex-1 text-center whitespace-nowrap text-[12px] sm:text-sm tracking-tight">기존 레슨과 연결되지 않은 신규 레슨 입니다.</span>
-                                    <X size={16} className="shrink-0 text-zinc-400" />
-                                </div>
-                            )}
+
+                            {/* 오른쪽 아래 AI 연필 아이콘 버튼 */}
+                            <div className="absolute right-3 bottom-3 z-10">
+                                <button
+                                    type="button"
+                                    onClick={handleAiRefineLesson}
+                                    disabled={isAiRefining}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-medium shadow-md shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+                                    title="Gemini AI로 레슨 내용 스마트하게 정리하기"
+                                >
+                                    {isAiRefining ? (
+                                        <>
+                                            <Loader2 size={13} className="animate-spin text-white" />
+                                            <span className="text-[11px] font-semibold">AI 정리 중...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles size={12} className="text-amber-300" />
+                                            <Pencil size={12} />
+                                            <span className="text-[11px] font-semibold">AI 정리</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </section>
                     {/* ── 4. Footers / Actions ── */}

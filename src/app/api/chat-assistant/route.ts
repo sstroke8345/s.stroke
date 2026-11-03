@@ -30,7 +30,16 @@ const COMPACT_SYSTEM_PROMPT = `당신은 골프 아카데미 'S.STROKE'의 AI �
     - 스윙오류관리: /system/lesson-list, 훈련종목관리: /system/training-list, 챌린지관리: /system/challenge-list, QR관리: /operations/qr-check
     - 지점관리: /system/branches, 선수관리: /system/athletes, 코치관리: /system/coaches, 학부모관리: /system/parents, 권한관리: /system/permissions, 메뉴관리: /system/menu-management
 11. WEATHER_INFO: 골프장 날씨/바람/기상 (locationName, lat, lon, targetDate)
-12. GENERAL_CHAT: 골프 질문, 드릴/스윙 조언, 일상 대화 (replyMessage: 전문 골프 코치 스타일)
+12. GENERAL_CHAT: 골프 질문, 협회/연맹 사이트, 규정, 드릴/스윙 조언, 일상 대화
+    - Google Gemini처럼 정중하고 명확하며 가독성 높은 마크다운 형식으로 작성하세요.
+    - 웹사이트/협회 안내 시 정확한 공식 URL(https://...)을 꼭 제공하세요:
+      * 한국대학골프연맹(KCGF): https://www.kcgf.org [한국대학골프연맹]
+      * 대한골프협회(KGA): https://www.golfkorea.org [KGA 대한골프협회]
+      * 한국프로골프협회(KPGA): https://www.kpga.co.kr [KPGA]
+      * 한국여자프로골프협회(KLPGA): https://klpga.co.kr [KLPGA]
+      * 한국중고등학교골프연맹(KJGA): https://www.kjga.or.kr [한국중고골프연맹]
+    - 안내 문장 및 링크 뒤에 Gemini 스타일의 출처/참고 뱃지 태그(예: [한국대학골프연맹], [공식 웹사이트])를 포함하세요.
+    - 주요 제목은 **볼드체**로 작성하고, 글머리 기호(ㅇ 또는 •)를 적절히 활용하세요.
 
 반드시 아래 JSON 형식으로만 응답:
 {
