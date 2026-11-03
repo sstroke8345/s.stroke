@@ -34,6 +34,7 @@ import {
     Search, 
     BookOpen,
     ArrowDown,
+    ArrowUp,
     ThumbsUp,
     ThumbsDown,
     Copy,
@@ -230,7 +231,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
     const [sessionState, setSessionState] = useState<ChatSessionState | null>(null);
     const [isListening, setIsListening] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [placeholder, setPlaceholder] = useState("예: 000 어프로치 레슨 작성, 000 훈련 등록...");
+    const [placeholder, setPlaceholder] = useState("S.STROKE에게 질문하기...");
     const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
     const [modalAthlete, setModalAthlete] = useState<string>("");
     const [modalPart, setModalPart] = useState<string>("shot");
@@ -609,7 +610,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
         };
         setMessages(prev => [...prev, completeMsg]);
         setSessionState(null);
-        setPlaceholder("예: 000 어프로치 레슨 작성, 000 훈련 등록...");
+        setPlaceholder("S.STROKE에게 질문하기...");
     };
 
     const handleResetChat = () => {
@@ -624,7 +625,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
     const isHistoryEmpty = messages.length === 0 || (messages.length === 1 && messages[0].id === "msg_welcome");
 
     return (
-        <div className="flex flex-col h-[calc(100vh-64px)] w-full max-w-2xl mx-auto px-4 relative">
+        <div className="flex flex-col h-[calc(100dvh-64px)] md:h-screen w-full max-w-2xl mx-auto px-3 sm:px-4 relative overflow-hidden">
             {/* Top Bar for Active Chat (새 대화 버튼) */}
             {!isHistoryEmpty && (
                 <div className="flex items-center justify-between py-2 border-b border-zinc-100 dark:border-zinc-800/80 mb-2">
@@ -647,10 +648,14 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
             <div 
                 ref={scrollContainerRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto space-y-6 pb-36 pt-2 px-1 scroll-smooth"
+                className={`flex-1 space-y-6 pt-2 px-1 scroll-smooth scrollbar-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                    isHistoryEmpty 
+                        ? "overflow-hidden flex flex-col justify-center items-center my-auto" 
+                        : "overflow-y-auto pb-36"
+                }`}
             >
                 {isHistoryEmpty ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center px-2 select-none my-auto py-6 sm:py-10 max-w-xl mx-auto">
+                    <div className="h-full flex flex-col items-center justify-center text-center px-2 select-none my-auto py-4 sm:py-8 max-w-xl mx-auto">
                         {/* Gemini Aura Background Light & Glowing Icon */}
                         <div className="relative mb-5">
                             <div className="absolute -inset-4 bg-gradient-to-tr from-blue-500/20 via-indigo-500/20 to-rose-500/20 blur-2xl rounded-full" />
@@ -660,7 +665,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                         </div>
 
                         {/* Title with Gradient Text */}
-                        <h1 className="text-2xl sm:text-3xl font-black tracking-tight mb-6 text-zinc-900 dark:text-zinc-50">
+                        <h1 className="text-2xl sm:text-3xl font-black tracking-tight mb-5 text-zinc-900 dark:text-zinc-50">
                             <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-rose-500 bg-clip-text text-transparent">
                                 {coachName || "코치"}님
                             </span>
@@ -668,8 +673,8 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                         </h1>
 
                         {/* Secondary Quick Micro Chips */}
-                        <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-                            <span className="text-[11px] font-semibold text-zinc-400 mr-1">빠른 실행:</span>
+                        <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
+                            <span className="text-xs font-semibold text-zinc-400 mr-1">빠른 실행:</span>
                             {[
                                 { label: "🔍 최근 레슨 조회", prompt: "최근 레슨 조회" },
                                 { label: "⛳ 스코어 작성", prompt: "스코어 작성" },
@@ -677,7 +682,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                 <button
                                     key={idx}
                                     onClick={() => handleSend(chip.prompt)}
-                                    className="px-2.5 py-1 rounded-full bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-[11px] font-medium transition-colors"
+                                    className="px-3.5 py-1.5 rounded-full bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-800/80 dark:hover:bg-zinc-700/80 text-xs sm:text-sm font-medium transition-colors shadow-xs"
                                 >
                                     {chip.label}
                                 </button>
@@ -691,11 +696,11 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                         // ── 1. USER MESSAGE (제미나이 스타일 우측 둥근 말풍선) ──
                         if (msg.sender === "user") {
                             return (
-                                <div key={msg.id} className="flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[75%] space-y-1">
-                                    <div className="bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3 rounded-[1.5rem] text-xs sm:text-sm leading-relaxed whitespace-pre-wrap select-text shadow-sm">
+                                <div key={msg.id} className="flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[75%] space-y-1.5">
+                                    <div className="bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 px-4 py-3 sm:px-5 sm:py-3.5 rounded-[1.5rem] text-[15px] sm:text-base leading-relaxed whitespace-pre-wrap select-text shadow-xs">
                                         {msg.text}
                                     </div>
-                                    <div className="flex items-center gap-1.5 px-2 text-[10px] text-zinc-400">
+                                    <div className="flex items-center gap-2 px-2 text-[11px] text-zinc-400">
                                         <span>{msg.timestamp}</span>
                                         <button
                                             type="button"
@@ -703,7 +708,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                             className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-0.5"
                                             title="텍스트 복사"
                                         >
-                                            {copiedMsgId === msg.id ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                                            {copiedMsgId === msg.id ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                                         </button>
                                     </div>
                                 </div>
@@ -712,8 +717,8 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
 
                         // ── 2. BOT / GEMINI RESPONSE (말풍선 없이 깔끔한 와이드 문서형 + 하단 액션 버튼) ──
                         return (
-                            <div key={msg.id} className="w-full mr-auto space-y-3 py-1 text-zinc-900 dark:text-zinc-100">
-                                <div className="text-xs sm:text-sm leading-relaxed select-text">
+                            <div key={msg.id} className="w-full mr-auto space-y-3 py-1.5 text-zinc-900 dark:text-zinc-100">
+                                <div className="text-[15px] sm:text-base leading-relaxed select-text">
                                     {isLatestBotMsg ? (
                                         <TypewriterText text={msg.text} />
                                     ) : (
@@ -722,20 +727,20 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                 </div>
 
                                 {/* Gemini-Style Subtle Action Bar (👍, 👎, 📋, ⋯) */}
-                                <div className="flex items-center gap-1 pt-1 text-zinc-400">
+                                <div className="flex items-center gap-1.5 pt-1 text-zinc-400">
                                     <button 
                                         type="button" 
                                         className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                                         title="좋은 답변"
                                     >
-                                        <ThumbsUp size={13} />
+                                        <ThumbsUp size={15} />
                                     </button>
                                     <button 
                                         type="button" 
                                         className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                                         title="아쉬운 답변"
                                     >
-                                        <ThumbsDown size={13} />
+                                        <ThumbsDown size={15} />
                                     </button>
                                     <button 
                                         type="button" 
@@ -743,33 +748,33 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                         className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors flex items-center gap-1"
                                         title="답변 복사"
                                     >
-                                        {copiedMsgId === msg.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                                        {copiedMsgId === msg.id ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
                                     </button>
                                     <button 
                                         type="button" 
                                         className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                                         title="더보기"
                                     >
-                                        <MoreHorizontal size={13} />
+                                        <MoreHorizontal size={15} />
                                     </button>
-                                    <span className="text-[10px] text-zinc-400 ml-2">{msg.timestamp}</span>
+                                    <span className="text-[11px] text-zinc-400 ml-2">{msg.timestamp}</span>
                                 </div>
 
                                 {/* Quick Choice Chips */}
                                 {!msg.actionCard && msg.options && msg.options.length > 0 && (
-                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                    <div className="flex flex-wrap gap-2 pt-1.5">
                                         {msg.options.map((opt, idx) => (
                                             <button
                                                 key={idx}
                                                 onClick={() => handleOptionClick(opt)}
-                                                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm ${
+                                                className={`px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all shadow-xs ${
                                                     opt.accent
                                                         ? "bg-brand-navy text-white hover:bg-brand-navy-dark shadow-brand-navy/10 scale-[1.02]"
                                                         : "bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-brand-navy/40 hover:bg-zinc-50"
                                                 }`}
                                             >
                                                 {opt.label}
-                                                {opt.subtext && <span className="block text-[10px] opacity-60 font-normal">{opt.subtext}</span>}
+                                                {opt.subtext && <span className="block text-[11px] opacity-60 font-normal">{opt.subtext}</span>}
                                             </button>
                                         ))}
                                     </div>
@@ -848,8 +853,8 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
 
                 {/* AI Thinking / Loading State */}
                 {isLoading && (
-                    <div className="w-full mr-auto py-2 flex items-center gap-2 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
-                        <Sparkles size={15} className="text-blue-500 animate-spin" />
+                    <div className="w-full mr-auto py-2 flex items-center gap-2.5 text-sm sm:text-base text-zinc-500 dark:text-zinc-400">
+                        <Sparkles size={17} className="text-blue-500 animate-spin" />
                         <span className="animate-pulse">답변을 생성하고 있습니다...</span>
                     </div>
                 )}
@@ -874,50 +879,53 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
             <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-36 bg-gradient-to-t from-zinc-50 via-zinc-50/90 to-transparent dark:from-zinc-950 dark:via-zinc-950/90 dark:to-transparent z-10" />
 
             {/* Floating Gemini-Style Capsule Pill Input Bar */}
-            <div className="absolute bottom-4 left-3 right-3 sm:left-4 sm:right-4 max-w-2xl mx-auto z-20">
+            <div className="absolute bottom-3 sm:bottom-5 inset-x-3 sm:inset-x-6 max-w-xl mx-auto z-20">
                 <form
                     onSubmit={e => { e.preventDefault(); handleSend(); }}
-                    className="flex items-center gap-2 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl px-4 py-3 sm:py-3.5 rounded-full border border-zinc-200/90 dark:border-zinc-800 shadow-2xl shadow-zinc-300/50 dark:shadow-black/70 focus-within:ring-2 focus-within:ring-brand-navy/30 dark:focus-within:ring-blue-500/30 transition-all"
+                    className="flex items-center gap-1.5 sm:gap-2 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full border border-zinc-200/90 dark:border-zinc-800 shadow-xl shadow-zinc-300/40 dark:shadow-black/60 focus-within:ring-2 focus-within:ring-blue-500/30 transition-all"
                 >
                     <button
                         type="button"
                         onClick={handleResetChat}
-                        className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+                        className="w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
                         title="새 대화 시작"
                     >
-                        <RefreshCw size={17} />
+                        <RefreshCw size={15} />
                     </button>
 
                     <input
                         type="text"
                         value={inputText}
                         onChange={e => setInputText(e.target.value)}
-                        placeholder={isListening ? "말씀을 듣고 있습니다..." : placeholder || "S.STROKE 코치에게 자연스럽게 입력..."}
-                        className="flex-1 bg-transparent text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none px-2"
+                        placeholder={isListening ? "듣고 있습니다..." : placeholder || "S.STROKE에게 질문하기..."}
+                        className="flex-1 min-w-0 bg-transparent text-[15px] sm:text-base text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none px-1.5"
                     />
 
                     <button
                         type="button"
                         onClick={toggleSpeech}
-                        className={`p-2 rounded-full transition-all shrink-0 ${
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 ${
                             isListening 
                                 ? "bg-rose-500 text-white animate-pulse shadow-md shadow-rose-500/30" 
                                 : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                         }`}
                         title={isListening ? "음성 인식 중지" : "음성으로 말하기"}
                     >
-                        {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                        {isListening ? <MicOff size={16} /> : <Mic size={16} />}
                     </button>
 
-                    {inputText.trim() && (
-                        <button
-                            type="submit"
-                            className="p-2 sm:p-2.5 bg-brand-navy hover:bg-brand-navy-dark text-white rounded-full transition-all shadow-md shadow-brand-navy/20 shrink-0 hover:scale-105 active:scale-95"
-                            title="전송"
-                        >
-                            <Send size={15} />
-                        </button>
-                    )}
+                    <button
+                        type="submit"
+                        disabled={!inputText.trim()}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 ${
+                            inputText.trim()
+                                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-sm hover:scale-105 active:scale-95"
+                                : "bg-zinc-100 text-zinc-300 dark:bg-zinc-800 dark:text-zinc-600 cursor-not-allowed"
+                        }`}
+                        title="전송 (Enter)"
+                    >
+                        <ArrowUp size={16} strokeWidth={2.5} />
+                    </button>
                 </form>
             </div>
 

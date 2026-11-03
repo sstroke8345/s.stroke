@@ -488,7 +488,7 @@ export default function Home() {
   const isLessonWriter = currentUser?.role === "coach" || currentUser?.role === "admin" || currentUser?.role === "headquarter" || currentUser?.role === "office";
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col overflow-hidden">
       {/* ─── Conversational Assistant (Gemini Live Workspace Core) ─── */}
       <section className="w-full flex-1 flex flex-col relative overflow-hidden">
         <ChatFeed 
