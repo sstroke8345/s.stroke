@@ -848,22 +848,22 @@ export function CreateLessonContent({
                             <p>* 최근 레슨 내용 확인 및 진행사항 점검</p>
                             <p>* 레슨 목표 방향에 맞는 레슨 내용 작성</p>
                         </div>
-                        <div className="relative">
+                        <div className="space-y-2">
                             <textarea
                                 rows={7}
                                 value={lessonContent}
                                 onChange={(e) => setLessonContent(e.target.value)}
-                                placeholder="레슨 내용을 간략하게 적은 후, 우측 하단 AI 연필 버튼을 누르면 전문적이고 조리 있게 정리해 드립니다."
-                                className="w-full p-4 pr-4 pb-12 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-brand-navy/40 transition-all resize-y leading-relaxed"
+                                placeholder="레슨 내용을 간략하게 적은 후, 하단 AI 정리 버튼을 누르면 전문적이고 조리 있게 정리해 드립니다."
+                                className="w-full p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-transparent dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-brand-navy/40 transition-all resize-y leading-relaxed"
                             />
 
-                            {/* 오른쪽 아래 AI 연필 아이콘 버튼 */}
-                            <div className="absolute right-3 bottom-3 z-10">
+                            {/* 박스 바깥 우측 하단 AI 연필 아이콘 버튼 */}
+                            <div className="flex justify-end">
                                 <button
                                     type="button"
                                     onClick={handleAiRefineLesson}
                                     disabled={isAiRefining}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-medium shadow-md shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-medium shadow-md shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
                                     title="Gemini AI로 레슨 내용 스마트하게 정리하기"
                                 >
                                     {isAiRefining ? (

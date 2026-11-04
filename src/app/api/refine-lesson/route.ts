@@ -26,8 +26,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "GEMINI_API_KEY가 설정되지 않았습니다." }, { status: 500 });
     }
 
-    const prompt = `당신은 대한민국 명문 골프 아카데미 'S.STROKE'의 수석 헤드 코치입니다.
+    const prompt = `당신은 'S.STROKE'입니다.
 현장 코치가 간단히 메모한 아래 골프 레슨 내용을 바탕으로, 선수와 학부모가 읽었을 때 이해하기 쉽고 전문적이며 조리 있게 다듬어 주세요.
+(주의: '아카데미'나 '수석코치', '헤드코치' 등의 수식어를 일절 사용하지 마시고, 명칭은 오직 'S.STROKE'로만 사용하세요.)
 
 [선수명]: ${athleteName || "선수"}
 [레슨 파트]: ${part || "골프 레슨"}
@@ -47,14 +48,14 @@ ${content.trim()}
 3. 신뢰감 있고 전문적이면서도 격려가 담긴 코칭 어투(~했습니다, ~하도록 지도함, ~에 유의할 것 등)를 사용하세요.
 4. "네, 정리해 드리겠습니다" 등의 서론/인사말이나 부연 설명은 일절 배제하고, 오직 완성된 레슨 내용 본문 텍스트만 출력하세요.`;
 
-    const candidateModels = [
-      process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
-      "gemini-3.5-flash",
-      "gemini-2.5-flash",
-      "gemini-2.0-flash",
-      "gemini-1.5-flash",
-      "gemini-flash-latest"
-    ];
+    const candidateModels = Array.from(
+      new Set([
+        process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3.6-flash"
+      ])
+    );
 
     let lastError = "";
     let refinedText = "";
@@ -62,7 +63,7 @@ ${content.trim()}
     for (const model of candidateModels) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 9000);
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,

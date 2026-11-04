@@ -56,6 +56,7 @@ export interface ChatMessage {
     options?: QuickOption[];
     actionCard?: string;
     timestamp: string;
+    isStreaming?: boolean;
 }
 
 interface ChatFeedProps {
@@ -398,6 +399,16 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
         // If NOT an ongoing form/step AND the intent is UNKNOWN (general question / conversational request)
         if (!isOngoingSession && freshIntent === "UNKNOWN") {
             setIsLoading(true);
+            const botMsgId = `bot_${Date.now()}`;
+            // 🚀 즉시 봇 말풍선을 생성하여 Gemini 실시간 스트리밍 대기 모드로 진입
+            setMessages(prev => [...prev, {
+                id: botMsgId,
+                sender: "bot",
+                text: "",
+                isStreaming: true,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }]);
+
             try {
                 const res = await fetch("/api/chat-assistant", {
                     method: "POST",
@@ -405,24 +416,54 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                     body: JSON.stringify({
                         message: text,
                         athletes,
+                        stream: true,
                         previousContext: sessionState ? { intent: sessionState.intent, athleteName: sessionState.athleteName } : null
                     })
                 });
 
-                if (res.ok) {
-                    const data = await res.json();
-                    const aiResult = data?.result;
+                if (res.ok && res.body) {
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let sseBuffer = "";
+                    let accumulatedText = "";
+                    let aiResult: any = null;
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        sseBuffer += decoder.decode(value, { stream: true });
+                        const lines = sseBuffer.split("\n");
+                        sseBuffer = lines.pop() || "";
+
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (!trimmed.startsWith("data: ")) continue;
+                            try {
+                                const data = JSON.parse(trimmed.slice(6));
+                                if (data.type === "chunk" && data.text) {
+                                    accumulatedText += data.text;
+                                    setMessages(prev => prev.map(m => m.id === botMsgId ? {
+                                        ...m,
+                                        text: accumulatedText,
+                                        isStreaming: true
+                                    } : m));
+                                } else if (data.type === "done") {
+                                    aiResult = data.result;
+                                }
+                            } catch (e) {}
+                        }
+                    }
 
                     if (aiResult) {
-                        // 1. 날씨 정보(WEATHER_INFO) 또는 일반 질문/지식 답변(GENERAL_CHAT) - 단추 없이 깔끔한 답변 텍스트만 출력
+                        const finalReply = aiResult.replyMessage || accumulatedText || "답변을 생성하지 못했습니다.";
+
+                        // 1. 날씨 정보(WEATHER_INFO) 또는 일반 질문/지식 답변(GENERAL_CHAT) - 실시간 스트리밍 완료 후 확정
                         if (aiResult.intent === "WEATHER_INFO" || aiResult.intent === "GENERAL_CHAT") {
-                            const botMsg: ChatMessage = {
-                                id: `bot_${Date.now()}`,
-                                sender: "bot",
-                                text: aiResult.replyMessage || "답변을 생성하지 못했습니다.",
-                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            };
-                            setMessages(prev => [...prev, botMsg]);
+                            setMessages(prev => prev.map(m => m.id === botMsgId ? {
+                                ...m,
+                                text: finalReply,
+                                isStreaming: false
+                            } : m));
                             setIsLoading(false);
                             return;
                         }
@@ -455,18 +496,16 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                             };
                             setSessionState(navState);
 
-                            const botMsg: ChatMessage = {
-                                id: `bot_${Date.now()}`,
-                                sender: "bot",
-                                text: aiResult.replyMessage || `**${finalTitle}** 화면으로 이동합니다.`,
+                            setMessages(prev => prev.map(m => m.id === botMsgId ? {
+                                ...m,
+                                text: finalReply,
+                                isStreaming: false,
                                 actionCard: "NAVIGATE_CARD",
                                 options: [
                                     { label: `👉 ${finalTitle} 바로 열기`, value: finalUrl, accent: true },
                                     { label: "🏠 홈 화면", value: "/" }
-                                ],
-                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            };
-                            setMessages(prev => [...prev, botMsg]);
+                                ]
+                            } : m));
                             setIsLoading(false);
 
                             // 🚀 메뉴로 자동 진입 (화면 깜빡임 없이 매끄럽게 페이지 이동)
@@ -479,7 +518,6 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                         // 3. 시스템 작성 인텐트인 경우 (CREATE_LESSON, CREATE_TRAINING 등)
                         if (aiResult.intent && aiResult.intent !== "UNKNOWN") {
                             const newInit = processInitialMessage(text, athletes);
-                            // Merge extracted fields from AI if available
                             if (aiResult.category) newInit.nextState.lessonCategory = aiResult.category;
                             if (aiResult.content) {
                                 newInit.nextState.lessonContent = aiResult.content;
@@ -502,22 +540,29 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                 }, 600);
                             }
 
-                            const botMsg: ChatMessage = {
-                                id: `bot_${Date.now()}`,
-                                sender: "bot",
-                                text: aiResult.replyMessage || newInit.response.message,
+                            setMessages(prev => prev.map(m => m.id === botMsgId ? {
+                                ...m,
+                                text: finalReply,
+                                isStreaming: false,
                                 actionCard: newInit.response.actionCard,
-                                options: newInit.response.options,
-                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            };
-                            setMessages(prev => [...prev, botMsg]);
+                                options: newInit.response.options
+                            } : m));
                             setIsLoading(false);
                             return;
                         }
+                    } else if (accumulatedText) {
+                        setMessages(prev => prev.map(m => m.id === botMsgId ? {
+                            ...m,
+                            text: accumulatedText,
+                            isStreaming: false
+                        } : m));
+                        setIsLoading(false);
+                        return;
                     }
                 }
             } catch (err) {
                 console.error("Chat assistant API call failed, falling back to local engine:", err);
+                setMessages(prev => prev.filter(m => m.id !== botMsgId));
             } finally {
                 setIsLoading(false);
             }
@@ -729,50 +774,64 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                             );
                         }
 
-                        // ── 2. BOT / GEMINI RESPONSE (말풍선 없이 깔끔한 와이드 문서형 + 하단 액션 버튼) ──
+                        // ── 2. BOT / GEMINI RESPONSE (말풍선 없이 깔끔한 와이드 문서형 + 실시간 스트리밍) ──
                         return (
                             <div key={msg.id} className="w-full mr-auto space-y-3 py-1.5 text-zinc-900 dark:text-zinc-100">
                                 <div className="text-[15px] sm:text-base leading-relaxed select-text">
-                                    {isLatestBotMsg ? (
-                                        <TypewriterText text={msg.text} />
+                                    {msg.isStreaming ? (
+                                        <div>
+                                            {msg.text ? (
+                                                <>
+                                                    <GeminiMarkdownRenderer text={msg.text} />
+                                                    <span className="inline-block w-2 h-4 bg-blue-500 ml-1 animate-pulse rounded-xs align-middle" />
+                                                </>
+                                            ) : (
+                                                <div className="flex items-center gap-2.5 text-sm sm:text-base text-zinc-500 dark:text-zinc-400 py-1">
+                                                    <Sparkles size={17} className="text-blue-500 animate-spin" />
+                                                    <span className="animate-pulse">답변을 생성하고 있습니다...</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
                                         <GeminiMarkdownRenderer text={msg.text} />
                                     )}
                                 </div>
 
-                                {/* Gemini-Style Subtle Action Bar (👍, 👎, 📋, ⋯) */}
-                                <div className="flex items-center gap-1.5 pt-1 text-zinc-400">
-                                    <button 
-                                        type="button" 
-                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-                                        title="좋은 답변"
-                                    >
-                                        <ThumbsUp size={15} />
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-                                        title="아쉬운 답변"
-                                    >
-                                        <ThumbsDown size={15} />
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => handleCopyText(msg.id, msg.text)}
-                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors flex items-center gap-1"
-                                        title="답변 복사"
-                                    >
-                                        {copiedMsgId === msg.id ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-                                        title="더보기"
-                                    >
-                                        <MoreHorizontal size={15} />
-                                    </button>
-                                    <span className="text-[11px] text-zinc-400 ml-2">{msg.timestamp}</span>
-                                </div>
+                                {/* Gemini-Style Subtle Action Bar (👍, 👎, 📋, ⋯) - 스트리밍 완료 후 노출 */}
+                                {!msg.isStreaming && msg.text && (
+                                    <div className="flex items-center gap-1.5 pt-1 text-zinc-400">
+                                        <button 
+                                            type="button" 
+                                            className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                                            title="좋은 답변"
+                                        >
+                                            <ThumbsUp size={15} />
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                                            title="아쉬운 답변"
+                                        >
+                                            <ThumbsDown size={15} />
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => handleCopyText(msg.id, msg.text)}
+                                            className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors flex items-center gap-1"
+                                            title="답변 복사"
+                                        >
+                                            {copiedMsgId === msg.id ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                                            title="더보기"
+                                        >
+                                            <MoreHorizontal size={15} />
+                                        </button>
+                                        <span className="text-[11px] text-zinc-400 ml-2">{msg.timestamp}</span>
+                                    </div>
+                                )}
 
                                 {/* Quick Choice Chips */}
                                 {!msg.actionCard && msg.options && msg.options.length > 0 && (
@@ -865,8 +924,8 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                     })
                 )}
 
-                {/* AI Thinking / Loading State */}
-                {isLoading && (
+                {/* AI Thinking / Loading State (스트리밍 버블이 없을 때만 별도 표시) */}
+                {isLoading && !messages.some(m => m.isStreaming) && (
                     <div className="w-full mr-auto py-2 flex items-center gap-2.5 text-sm sm:text-base text-zinc-500 dark:text-zinc-400">
                         <Sparkles size={17} className="text-blue-500 animate-spin" />
                         <span className="animate-pulse">답변을 생성하고 있습니다...</span>

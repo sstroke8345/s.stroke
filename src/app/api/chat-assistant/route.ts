@@ -6,7 +6,8 @@ interface Athlete {
 }
 
 // ── 경량화된 초고속 시스템 프롬프트 (토큰 수 60% 절감) ──
-const COMPACT_SYSTEM_PROMPT = `당신은 골프 아카데미 'S.STROKE'의 AI 코칭 어시스턴트입니다.
+const COMPACT_SYSTEM_PROMPT = `당신은 'S.STROKE'의 AI 코칭 어시스턴트입니다.
+절대 '아카데미'라는 단어를 붙이지 마세요. 브랜드 이름은 오직 'S.STROKE'입니다.
 코치님의 입력을 분석하여 정확한 intent와 응답을 JSON으로 출력하세요.
 
 [Intent 가이드]
@@ -32,6 +33,7 @@ const COMPACT_SYSTEM_PROMPT = `당신은 골프 아카데미 'S.STROKE'의 AI �
 11. WEATHER_INFO: 골프장 날씨/바람/기상 (locationName, lat, lon, targetDate)
 12. GENERAL_CHAT: 골프 질문, 협회/연맹 사이트, 규정, 드릴/스윙 조언, 일상 대화
     - Google Gemini처럼 정중하고 명확하며 가독성 높은 마크다운 형식으로 작성하세요.
+    - '아카데미'라는 단어를 일절 사용하지 마세요. 소속이나 브랜드를 지칭할 때는 반드시 'S.STROKE'로만 단독 표기하세요. (예: "S.STROKE 아카데미" ❌ -> "S.STROKE" ⭕)
     - 웹사이트/협회 안내 시 정확한 공식 URL(https://...)을 꼭 제공하세요:
       * 한국대학골프연맹(KCGF): https://www.kcgf.org [한국대학골프연맹]
       * 대한골프협회(KGA): https://www.golfkorea.org [KGA 대한골프협회]
@@ -82,6 +84,58 @@ const KNOWN_GOLF_LOCATIONS: { keywords: string[]; name: string; lat: number; lon
   { keywords: ["춘천", "라비에벨", "제이드팰리스", "로드힐스", "더플레이어스"], name: "강원 춘천 권역", lat: 37.881, lon: 127.729 },
   { keywords: ["원주", "오크밸리", "센추리21"], name: "강원 원주 권역", lat: 37.342, lon: 127.920 }
 ];
+
+// 실시간 스트리밍 중 JSON 내부의 replyMessage 문자열 토큰을 추출하는 파서
+class ReplyExtractor {
+  private started = false;
+  private ended = false;
+  private buffer = "";
+
+  feed(text: string): string {
+    if (this.ended) return "";
+    this.buffer += text;
+
+    if (!this.started) {
+      const marker = '"replyMessage":';
+      const mIdx = this.buffer.indexOf(marker);
+      if (mIdx !== -1) {
+        const qIdx = this.buffer.indexOf('"', mIdx + marker.length);
+        if (qIdx !== -1) {
+          this.started = true;
+          const afterQuote = this.buffer.slice(qIdx + 1);
+          this.buffer = "";
+          return this.processContent(afterQuote);
+        }
+      }
+      return "";
+    }
+
+    return this.processContent(text);
+  }
+
+  private processContent(str: string): string {
+    let out = "";
+    let i = 0;
+    while (i < str.length) {
+      if (str[i] === "\\" && i + 1 < str.length) {
+        const next = str[i + 1];
+        if (next === "n") out += "\n";
+        else if (next === "t") out += "\t";
+        else if (next === '"') out += '"';
+        else if (next === "\\") out += "\\";
+        else out += next;
+        i += 2;
+      } else if (str[i] === '"' && !this.ended) {
+        this.ended = true;
+        break;
+      } else {
+        out += str[i];
+        i++;
+      }
+    }
+    return out;
+  }
+}
 
 function getWeatherStatus(code: number): { text: string; icon: string } {
   if (code === 0) return { text: "맑음", icon: "☀️" };
@@ -229,6 +283,27 @@ export async function POST(req: NextRequest) {
             { locationName: matchedGolfCourse.name, lat: matchedGolfCourse.lat, lon: matchedGolfCourse.lon },
             message
           );
+          if (payload.stream) {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+              start(controller) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", text: quickWeatherText })}\n\n`));
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: "done",
+                  result: { intent: "WEATHER_INFO", replyMessage: quickWeatherText },
+                  modelUsed: "instant-weather-engine"
+                })}\n\n`));
+                controller.close();
+              }
+            });
+            return new Response(stream, {
+              headers: {
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive"
+              }
+            });
+          }
           return NextResponse.json({
             result: {
               intent: "WEATHER_INFO",
@@ -254,13 +329,145 @@ export async function POST(req: NextRequest) {
 `;
 
     // 가장 빠르고 지연시간(Latency)이 짧은 초경량 무료 모델 우선 배치
-    const candidateModels = [
-      process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
-      "gemini-3.5-flash-lite",
-      "gemini-3.5-flash",
-      "gemini-flash-latest"
-    ];
+    const candidateModels = Array.from(
+      new Set([
+        process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3.6-flash"
+      ])
+    );
 
+    // ── 🌊 [실시간 스트리밍 모드: 토큰 단위 실시간 전송 (Gemini App 경험)] ──
+    if (payload.stream) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          let success = false;
+          let lastErr = "";
+
+          for (const model of candidateModels) {
+            try {
+              const abortCtrl = new AbortController();
+              const timeoutId = setTimeout(() => abortCtrl.abort(), 25000);
+
+              const res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+                {
+                  method: "POST",
+                  signal: abortCtrl.signal,
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [
+                      {
+                        role: "user",
+                        parts: [
+                          { text: COMPACT_SYSTEM_PROMPT },
+                          { text: userPrompt }
+                        ]
+                      }
+                    ],
+                    generationConfig: {
+                      temperature: 0.2,
+                      maxOutputTokens: 800,
+                      responseMimeType: "application/json"
+                    }
+                  })
+                }
+              );
+              clearTimeout(timeoutId);
+
+              if (!res.ok) {
+                const errDetail = await res.text();
+                lastErr = `[${model}] ${errDetail.slice(0, 100)}`;
+                continue;
+              }
+
+              if (!res.body) continue;
+
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let accumulatedRaw = "";
+              const extractor = new ReplyExtractor();
+              let sseBuffer = "";
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                sseBuffer += decoder.decode(value, { stream: true });
+                const lines = sseBuffer.split("\n");
+                sseBuffer = lines.pop() || "";
+
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (trimmed.startsWith("data: ")) {
+                    try {
+                      const json = JSON.parse(trimmed.slice(6));
+                      const textPart = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+                      if (textPart) {
+                        accumulatedRaw += textPart;
+                        const token = extractor.feed(textPart);
+                        if (token) {
+                          controller.enqueue(
+                            encoder.encode(`data: ${JSON.stringify({ type: "chunk", text: token })}\n\n`)
+                          );
+                        }
+                      }
+                    } catch (e) {}
+                  }
+                }
+              }
+
+              let parsed: any;
+              try {
+                parsed = JSON.parse(accumulatedRaw);
+              } catch (parseErr) {
+                const cleanJson = accumulatedRaw.replace(/```json/g, "").replace(/```/g, "").trim();
+                parsed = JSON.parse(cleanJson);
+              }
+
+              if (parsed && (parsed.intent === "WEATHER_INFO" || (parsed.intent === "GENERAL_CHAT" && isWeatherQuestion))) {
+                try {
+                  const weatherResponse = await fetchRealtimeWeather(parsed, message);
+                  parsed.replyMessage = weatherResponse;
+                  parsed.intent = "WEATHER_INFO";
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: "chunk", text: weatherResponse })}\n\n`)
+                  );
+                } catch (weatherErr) {
+                  console.warn("Weather fetch fallback:", weatherErr);
+                }
+              }
+
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: "done", result: parsed, modelUsed: model })}\n\n`)
+              );
+              success = true;
+              break;
+            } catch (err: any) {
+              lastErr = `[${model}] ${err?.message || String(err)}`;
+            }
+          }
+
+          if (!success) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "error", error: lastErr || "Gemini streaming failed" })}\n\n`)
+            );
+          }
+          controller.close();
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        }
+      });
+    }
+
+    // ── 📦 [기존 동기식 JSON 모드 (Fallback / 호환성)] ──
     let lastError = "";
     let data: any = null;
     let selectedModel = "";
@@ -268,7 +475,7 @@ export async function POST(req: NextRequest) {
     for (const model of candidateModels) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6초 빠른 전환
+        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25초 안정 타임아웃
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,

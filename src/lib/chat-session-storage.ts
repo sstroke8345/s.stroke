@@ -59,6 +59,7 @@ export function setActiveChatSessionId(sessionId: string | null) {
 export function startNewChatSession() {
     if (typeof window === "undefined") return;
     localStorage.removeItem(STORAGE_KEY_ACTIVE_ID);
+    localStorage.removeItem("s_stroke_chat_history");
     window.dispatchEvent(new CustomEvent("s_stroke_chat_session_change", { detail: { sessionId: null } }));
 }
 

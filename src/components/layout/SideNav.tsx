@@ -339,19 +339,22 @@ export function SideNav() {
                     <Menu size={24} />
                 </button>
 
-                {/* Right: Profile Avatar aligned to the right */}
-                <div className="flex items-center gap-1.5 ml-auto">
+                {/* Right: 대화창 (새 채팅 홈) & Profile Avatar */}
+                <div className="flex items-center gap-2 ml-auto">
                     <button
                         onClick={() => {
                             startNewChatSession();
                             if (pathname !== "/") {
                                 router.push("/");
+                            } else {
+                                window.scrollTo({ top: 0, behavior: "smooth" });
                             }
                         }}
-                        className="w-9 h-9 rounded-full text-zinc-600 dark:text-zinc-400 hover:text-brand-navy dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center justify-center transition-colors"
-                        title="새 대화 시작 (홈)"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-bold shadow-xs hover:border-brand-navy/30 active:scale-95 transition-all"
+                        title="새 채팅 시작 (대화창 첫 화면)"
                     >
-                        <Home size={20} />
+                        <MessageSquare size={13} className="text-brand-navy dark:text-brand-navy-light" />
+                        <span>대화창</span>
                     </button>
                     <Link
                         href={profileLink}
