@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,9 +51,10 @@ ${content.trim()}
 
     const candidateModels = Array.from(
       new Set([
-        process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
-        "gemini-3.5-flash-lite",
+        process.env.GEMINI_MODEL || "gemini-3.1-flash-lite",
         "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
         "gemini-3.6-flash"
       ])
     );
@@ -63,7 +65,7 @@ ${content.trim()}
     for (const model of candidateModels) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -74,8 +76,8 @@ ${content.trim()}
             body: JSON.stringify({
               contents: [{ role: "user", parts: [{ text: prompt }] }],
               generationConfig: {
-                temperature: 0.4,
-                maxOutputTokens: 1000
+                temperature: 0.3,
+                maxOutputTokens: 2500 // 충분한 토큰 여유로 긴 레슨 내용도 절대 잘리지 않음
               }
             })
           }

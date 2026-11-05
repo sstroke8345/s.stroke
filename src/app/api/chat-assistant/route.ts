@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 interface Athlete {
   id: string;
   name: string;
@@ -331,9 +334,10 @@ export async function POST(req: NextRequest) {
     // 가장 빠르고 지연시간(Latency)이 짧은 초경량 무료 모델 우선 배치
     const candidateModels = Array.from(
       new Set([
-        process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
-        "gemini-3.5-flash-lite",
+        process.env.GEMINI_MODEL || "gemini-3.1-flash-lite",
         "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
         "gemini-3.6-flash"
       ])
     );
@@ -349,7 +353,7 @@ export async function POST(req: NextRequest) {
           for (const model of candidateModels) {
             try {
               const abortCtrl = new AbortController();
-              const timeoutId = setTimeout(() => abortCtrl.abort(), 25000);
+              const timeoutId = setTimeout(() => abortCtrl.abort(), 30000);
 
               const res = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
@@ -369,7 +373,7 @@ export async function POST(req: NextRequest) {
                     ],
                     generationConfig: {
                       temperature: 0.2,
-                      maxOutputTokens: 800,
+                      maxOutputTokens: 2000,
                       responseMimeType: "application/json"
                     }
                   })
@@ -475,7 +479,7 @@ export async function POST(req: NextRequest) {
     for (const model of candidateModels) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000); // 25초 안정 타임아웃
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -497,7 +501,7 @@ export async function POST(req: NextRequest) {
               ],
               generationConfig: {
                 temperature: 0.2, // 더 빠르고 결정론적인 답변
-                maxOutputTokens: 800, // 토큰 길이 제한으로 생성 속도 대폭 향상
+                maxOutputTokens: 2000, // 충분한 토큰으로 긴 답변도 잘림 방지
                 responseMimeType: "application/json"
               }
             })
