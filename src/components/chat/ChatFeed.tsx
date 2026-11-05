@@ -9,7 +9,8 @@ import {
     handleIntentNextStep, 
     preloadAthletes,
     detectIntent,
-    QuickOption 
+    QuickOption,
+    ChatUserTarget
 } from "@/lib/chat-engine";
 import { 
     LessonFormCard, 
@@ -228,7 +229,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
     });
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState("");
-    const [athletes, setAthletes] = useState<{ id: string; name: string }[]>([]);
+    const [athletes, setAthletes] = useState<ChatUserTarget[]>([]);
     const [sessionState, setSessionState] = useState<ChatSessionState | null>(null);
     const [isListening, setIsListening] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -393,7 +394,10 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
 
         // Check if user input matches a specific system menu or ongoing task
         const freshIntent = detectIntent(text);
-        const isOngoingSession = sessionState && sessionState.intent !== "UNKNOWN" && sessionState.step !== "INIT";
+        const tClean = text.toLowerCase().replace(/\s+/g, "");
+        const isScoreTrainingReq = (tClean.includes("스코어") || tClean.includes("성적") || tClean.includes("통계")) && 
+            (tClean.includes("훈련") || tClean.includes("제안") || tClean.includes("추천") || tClean.includes("드릴") || tClean.includes("연습") || tClean.includes("보완"));
+        const isOngoingSession = !isScoreTrainingReq && sessionState && sessionState.intent !== "UNKNOWN" && sessionState.step !== "INIT";
         const isSwitchingTask = freshIntent !== "UNKNOWN" && sessionState && freshIntent !== sessionState.intent;
 
         // If NOT an ongoing form/step AND the intent is UNKNOWN (general question / conversational request)
@@ -457,13 +461,17 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                     if (aiResult) {
                         const finalReply = aiResult.replyMessage || accumulatedText || "답변을 생성하지 못했습니다.";
 
-                        // 1. 날씨 정보(WEATHER_INFO) 또는 일반 질문/지식 답변(GENERAL_CHAT) - 실시간 스트리밍 완료 후 확정
-                        if (aiResult.intent === "WEATHER_INFO" || aiResult.intent === "GENERAL_CHAT") {
+                        // 1. 날씨 정보(WEATHER_INFO), 일반 질문(GENERAL_CHAT), 스코어 기반 훈련 추천(RECOMMEND_TRAINING_FROM_SCORE) - 실시간 스트리밍 완료 후 확정
+                        if (aiResult.intent === "WEATHER_INFO" || aiResult.intent === "GENERAL_CHAT" || aiResult.intent === "RECOMMEND_TRAINING_FROM_SCORE") {
                             setMessages(prev => prev.map(m => m.id === botMsgId ? {
                                 ...m,
                                 text: finalReply,
+                                options: aiResult.options || undefined,
                                 isStreaming: false
                             } : m));
+                            if (aiResult.athleteName) {
+                                setSessionState(prev => prev ? { ...prev, athleteName: aiResult.athleteName } : { intent: "UNKNOWN", step: "INIT", athleteName: aiResult.athleteName });
+                            }
                             setIsLoading(false);
                             return;
                         }
@@ -1034,7 +1042,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                             <div className="flex items-center gap-2">
                                 <Search size={18} className="text-brand-navy dark:text-brand-navy-light" />
                                 <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                                    선수 선택 <span className="text-xs font-normal text-zinc-400">({athletes.length}명)</span>
+                                    대상 선택 (선수/코치/관리자) <span className="text-xs font-normal text-zinc-400">({athletes.length}명)</span>
                                 </h3>
                             </div>
                             <button
@@ -1054,7 +1062,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                     autoFocus
                                     value={athleteSearchQuery}
                                     onChange={(e) => setAthleteSearchQuery(e.target.value)}
-                                    placeholder="선수 이름 또는 초성 검색 (예: ㅎㅈㅇ, 황)"
+                                    placeholder="이름 또는 초성 검색 (예: hwang, 슈퍼, 황)"
                                     className="w-full pl-9 pr-14 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs sm:text-sm text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-navy/30"
                                 />
                                 {athleteSearchQuery && (
@@ -1072,7 +1080,7 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                         <div className="max-h-72 overflow-y-auto p-2 space-y-1">
                             {filteredAthletes.length === 0 ? (
                                 <p className="text-center py-8 text-xs text-zinc-400">
-                                    일치하는 선수가 없습니다.
+                                    일치하는 사용자가 없습니다.
                                 </p>
                             ) : (
                                 filteredAthletes.map((a) => (
@@ -1089,9 +1097,20 @@ export function ChatFeed({ coachName, coachId, onHistoryUpdate }: ChatFeedProps)
                                             <div className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-800 group-hover:bg-brand-navy group-hover:text-white flex items-center justify-center text-xs font-bold transition-colors">
                                                 {a.name.slice(0, 1)}
                                             </div>
-                                            <span className="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-brand-navy dark:group-hover:text-white">
-                                                {a.name}
-                                            </span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-brand-navy dark:group-hover:text-white">
+                                                    {a.name}
+                                                </span>
+                                                {a.role && (
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
+                                                        a.role === 'admin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300' :
+                                                        a.role === 'coach' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300' :
+                                                        'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
+                                                    }`}>
+                                                        {a.role === 'admin' ? '관리자' : a.role === 'coach' ? '코치' : '선수'}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         <span className="text-[11px] text-zinc-400 font-medium">선택</span>
                                     </button>

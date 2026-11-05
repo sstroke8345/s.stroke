@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -6,7 +7,37 @@ export const maxDuration = 60;
 interface Athlete {
   id: string;
   name: string;
+  role?: string;
 }
+
+const getRoleLabel = (role?: string) => {
+  if (role === 'coach') return '코치';
+  if (role === 'admin') return '관리자';
+  return '선수';
+};
+
+const getRoleIcon = (role?: string) => {
+  if (role === 'coach') return '👔';
+  if (role === 'admin') return '🛡️';
+  return '🏌️';
+};
+
+// ── S.STROKE 13개 항목별 통계 지표 정의 (높은 점수 = 타수 손실 큼 / 취약 항목) ──
+const SCORE_CATEGORIES = [
+  { key: "tee_dist_sg", name: "티샷 비거리", area: "티샷" },
+  { key: "tee_acc_sg", name: "티샷 정확도", area: "티샷" },
+  { key: "dist_180_plus_sg", name: "180m 이상 롱아이언/우드", area: "세컨샷" },
+  { key: "dist_150_179_sg", name: "150~179m 중거리 아이언", area: "세컨샷" },
+  { key: "dist_120_149_sg", name: "120~149m 숏/미들 아이언", area: "세컨샷" },
+  { key: "dist_90_119_sg", name: "90~119m 웨지 풀샷", area: "세컨샷" },
+  { key: "pitch_sg", name: "피치샷", area: "그린 주변" },
+  { key: "bunker_sg", name: "벙커샷", area: "그린 주변" },
+  { key: "approach_sg", name: "어프로치/치핑", area: "그린 주변" },
+  { key: "putt_9_plus_sg", name: "9m 이상 롱퍼팅", area: "퍼팅" },
+  { key: "putt_4_8_sg", name: "4~8m 중거리 퍼팅", area: "퍼팅" },
+  { key: "putt_2_3_sg", name: "2~3m 쇼트 퍼팅", area: "퍼팅" },
+  { key: "putt_1_sg", name: "1m 탭인 퍼팅", area: "퍼팅" },
+];
 
 // ── 경량화된 초고속 시스템 프롬프트 (토큰 수 60% 절감) ──
 const COMPACT_SYSTEM_PROMPT = `당신은 'S.STROKE'의 AI 코칭 어시스턴트입니다.
@@ -322,6 +353,465 @@ export async function POST(req: NextRequest) {
 
     if (!apiKey) {
       return NextResponse.json({ error: "GEMINI_API_KEY is not configured" }, { status: 500 });
+    }
+
+    // ── ⚡ [패스 2: 최근 스코어 DB 기반 맞춤 훈련 추천 (A 방식)] ──
+    const msgTrim = (message || "").trim();
+    const msgClean = msgTrim.toLowerCase().replace(/\s+/g, "");
+
+    const isScoreTrainingRequest = 
+      (msgClean.includes("스코어") || msgClean.includes("성적") || msgClean.includes("통계")) &&
+      (msgClean.includes("훈련") || msgClean.includes("제안") || msgClean.includes("추천") || msgClean.includes("드릴") || msgClean.includes("연습") || msgClean.includes("보완"));
+
+    if (isScoreTrainingRequest) {
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
+        const supabase = createSupabaseClient(supabaseUrl, supabaseKey);
+
+        // 1. 선수 식별 (전달받은 athletes 목록 -> DB users 순으로 매칭, 영문/대소문자/공백 무시)
+        const msgCleanLower = msgClean.toLowerCase();
+        let targetAthlete = (athletes || []).find((a: Athlete) => a.name && msgCleanLower.includes(a.name.toLowerCase().replace(/\s+/g, "")));
+        if (!targetAthlete && previousContext?.athleteName) {
+          targetAthlete = (athletes || []).find((a: Athlete) => a.name && a.name.toLowerCase() === previousContext.athleteName.toLowerCase());
+        }
+
+        let allAthletes: Athlete[] = athletes || [];
+        if (!targetAthlete || allAthletes.length === 0) {
+          // 선수뿐만 아니라 관리자, 코치 등 모든 사용자를 조회
+          const { data: dbUsers } = await supabase.from("users").select("id, name, role").order("name", { ascending: true });
+          if (dbUsers && dbUsers.length > 0) {
+            allAthletes = dbUsers as Athlete[];
+            if (!targetAthlete) {
+              targetAthlete = allAthletes.find(a => a.name && msgCleanLower.includes(a.name.toLowerCase().replace(/\s+/g, "")));
+            }
+          }
+        }
+
+        // 정규식으로 대상 이름 추출 시도 (예: "hwang 코치", "슈퍼관리자", "김민우 선수", "hwang")
+        if (!targetAthlete) {
+          const nameMatch = message.match(/([가-힣a-zA-Z0-9_-]{2,15})\s*(?:선수|코치|관리자|회원|프로|님)?/i);
+          if (nameMatch && nameMatch[1]) {
+            const searchKeyword = nameMatch[1].toLowerCase();
+            targetAthlete = allAthletes.find(a => a.name && a.name.toLowerCase() === searchKeyword);
+            if (!targetAthlete) {
+              const { data: ilikeUsers } = await supabase.from("users").select("id, name, role").ilike("name", `%${nameMatch[1]}%`).limit(1);
+              if (ilikeUsers && ilikeUsers.length > 0) {
+                targetAthlete = ilikeUsers[0] as Athlete;
+              }
+            }
+          }
+        }
+
+        // 대상이 지정되지 않은 경우: 대상 선택 옵션 칩 제시 (선수, 코치, 관리자 모두 지원)
+        if (!targetAthlete) {
+          const selectMsg = `**어떤 분(선수/코치/관리자)의 스코어를 분석하여 훈련을 추천해 드릴까요?** ⛳\n\n아래 버튼을 누르시거나, 원하시는 분의 이름을 말씀해 주세요:`;
+          let athleteChips = allAthletes.slice(0, 10).map(a => ({
+            label: `${getRoleIcon(a.role)} ${a.name} (${getRoleLabel(a.role)})`,
+            value: `${a.name} 최근 스코어로 훈련 제안해줘`
+          }));
+
+          if (athleteChips.length === 0) {
+            const { data: scoredUsers } = await supabase.from("scorecard_summary").select("athlete:users!scorecard_summary_athlete_id_fkey(id, name, role)").limit(5);
+            for (const row of (scoredUsers || [])) {
+              const u = (row as any).athlete;
+              if (u?.name && !athleteChips.some(c => c.label.includes(u.name))) {
+                athleteChips.push({
+                  label: `${getRoleIcon(u.role)} ${u.name} (${getRoleLabel(u.role)})`,
+                  value: `${u.name} 최근 스코어로 훈련 제안해줘`
+                });
+              }
+            }
+          }
+
+          if (athleteChips.length === 0) {
+            athleteChips.push({
+              label: `👥 사용자 관리 바로가기`,
+              value: `/system/athletes`
+            });
+          }
+
+          if (payload.stream) {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+              start(controller) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", text: selectMsg })}\n\n`));
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: "done",
+                  result: {
+                    intent: "RECOMMEND_TRAINING_FROM_SCORE",
+                    replyMessage: selectMsg,
+                    options: athleteChips
+                  },
+                  modelUsed: "score-rule-engine"
+                })}\n\n`));
+                controller.close();
+              }
+            });
+            return new Response(stream, {
+              headers: {
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive"
+              }
+            });
+          }
+          return NextResponse.json({
+            result: {
+              intent: "RECOMMEND_TRAINING_FROM_SCORE",
+              replyMessage: selectMsg,
+              options: athleteChips
+            },
+            modelUsed: "score-rule-engine"
+          });
+        }
+
+        // 2. 분석 기준 (경기 수 / 기간) 결정 - A방식: 기본 최근 3경기 추천
+        let limit = 3;
+        let criteriaLabel = "최근 3경기 (추천 기준)";
+        let isOneMonth = false;
+
+        if (msgClean.includes("1경기") || msgClean.includes("직전") || msgClean.includes("1개") || msgClean.includes("한경기")) {
+          limit = 1;
+          criteriaLabel = "직전 1경기 기준";
+        } else if (msgClean.includes("5경기") || msgClean.includes("5개") || msgClean.includes("다섯경기")) {
+          limit = 5;
+          criteriaLabel = "최근 5경기 기준";
+        } else if (msgClean.includes("10경기") || msgClean.includes("10개") || msgClean.includes("열경기")) {
+          limit = 10;
+          criteriaLabel = "최근 10경기 기준";
+        } else if (msgClean.includes("1개월") || msgClean.includes("한달") || msgClean.includes("30일")) {
+          isOneMonth = true;
+          criteriaLabel = "최근 1개월(30일) 기준";
+        }
+
+        // 3. Supabase scorecard_summary에서 실데이터 조회
+        let query = supabase
+          .from("scorecard_summary")
+          .select(`
+            id, round_date, total_score, hole_count,
+            tee_dist_sg, tee_acc_sg,
+            dist_180_plus_sg, dist_150_179_sg, dist_120_149_sg, dist_90_119_sg,
+            pitch_sg, bunker_sg, approach_sg,
+            putt_9_plus_sg, putt_4_8_sg, putt_2_3_sg, putt_1_sg
+          `)
+          .eq("athlete_id", targetAthlete.id)
+          .order("round_date", { ascending: false });
+
+        if (isOneMonth) {
+          const past30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+          query = query.gte("round_date", past30Days);
+        } else {
+          query = query.limit(limit);
+        }
+
+        const { data: scorecards, error: scoreErr } = await query;
+
+        // 등록된 스코어가 없는 경우 안내
+        if (!scorecards || scorecards.length === 0) {
+          // DB에 스코어가 존재하는 다른 대상(선수/코치/관리자)을 찾아 추천 칩으로 제공
+          const { data: existingScoreRows } = await supabase
+            .from("scorecard_summary")
+            .select("athlete_id, athlete:users!scorecard_summary_athlete_id_fkey(id, name, role)")
+            .limit(10);
+
+          const validAthletes: { id: string; name: string; role?: string }[] = [];
+          for (const s of (existingScoreRows || [])) {
+            const u = (s as any).athlete;
+            if (u?.name && !validAthletes.some(v => v.name === u.name)) {
+              validAthletes.push({ id: u.id, name: u.name, role: u.role });
+            }
+          }
+
+          const targetRole = getRoleLabel(targetAthlete.role);
+          const noDataMsg = `**${targetAthlete.name}** ${targetRole}님의 등록된 라운드 스코어카드 데이터가 아직 없습니다. ⛳\n\n먼저 **${targetAthlete.name}**님의 스코어를 등록해 주시거나, 이미 스코어가 등록되어 있는 대상을 선택해 보세요!`;
+          const noDataOptions = [
+            { label: `📝 ${targetAthlete.name} 스코어 등록하기`, value: `${targetAthlete.name} 스코어 등록`, accent: true },
+            ...validAthletes.map(a => ({
+              label: `${getRoleIcon(a.role)} ${a.name} (${getRoleLabel(a.role)}) 스코어로 훈련 제안`,
+              value: `${a.name} 최근 스코어로 훈련 제안해줘`
+            })),
+            { label: `📊 스코어 현황 보기`, value: `/scores` }
+          ];
+
+          if (payload.stream) {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+              start(controller) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", text: noDataMsg })}\n\n`));
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: "done",
+                  result: {
+                    intent: "RECOMMEND_TRAINING_FROM_SCORE",
+                    replyMessage: noDataMsg,
+                    athleteName: targetAthlete.name,
+                    options: noDataOptions
+                  },
+                  modelUsed: "score-rule-engine"
+                })}\n\n`));
+                controller.close();
+              }
+            });
+            return new Response(stream, {
+              headers: {
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive"
+              }
+            });
+          }
+          return NextResponse.json({
+            result: {
+              intent: "RECOMMEND_TRAINING_FROM_SCORE",
+              replyMessage: noDataMsg,
+              athleteName: targetAthlete.name,
+              options: noDataOptions
+            },
+            modelUsed: "score-rule-engine"
+          });
+        }
+
+        // 4. 통계 계산 (13개 항목 평균 산출 및 내림차순 정렬: 높은 점수 = 못한 것)
+        const roundCount = scorecards.length;
+        const avgScore = Math.round((scorecards.reduce((sum, r) => sum + (Number(r.total_score) || 0), 0) / roundCount) * 10) / 10;
+        const dateList = scorecards.map(s => s.round_date).filter(Boolean).join(", ");
+
+        const categoryStats = SCORE_CATEGORIES.map(cat => {
+          let sum = 0;
+          let validCount = 0;
+          for (const r of scorecards) {
+            const val = (r as any)[cat.key];
+            if (val !== null && val !== undefined && !isNaN(Number(val))) {
+              sum += Number(val);
+              validCount++;
+            }
+          }
+          const avg = validCount > 0 ? Math.round((sum / validCount) * 100) / 100 : 0;
+          return {
+            ...cat,
+            avgScore: avg
+          };
+        });
+
+        // 높은 점수가 못한 것 -> 내림차순 정렬 (Worst 1, 2, 3)
+        categoryStats.sort((a, b) => b.avgScore - a.avgScore);
+
+        const worst1 = categoryStats[0];
+        const worst2 = categoryStats[1];
+        const worst3 = categoryStats[2];
+
+        // 하단 원터치 선택 칩 (A방식 옵션 버튼들)
+        const quickOptions = [
+          { label: `📅 직전 1경기 기준`, value: `${targetAthlete.name} 직전 1경기 스코어로 훈련 제안해줘` },
+          { label: `📊 최근 5경기 기준`, value: `${targetAthlete.name} 최근 5경기 스코어로 훈련 제안해줘` },
+          { label: `🗓️ 최근 1개월 기준`, value: `${targetAthlete.name} 최근 1개월 스코어로 훈련 제안해줘` },
+          { label: `📈 항목별 세부통계 보기`, value: `/scores/category-stats` }
+        ];
+
+        // 5. Gemini 전용 프롬프트 생성 (마크다운 스트리밍)
+        const targetRole = getRoleLabel(targetAthlete.role);
+        const coachingPrompt = `당신은 'S.STROKE'의 골프 데이터 분석 및 훈련 설계 전문 AI 어시스턴트입니다.
+절대 '아카데미'라는 단어를 사용하지 마세요. 소속이나 브랜드를 지칭할 때는 오직 'S.STROKE'로만 단독 표기하세요.
+
+분석 대상: ${targetAthlete.name} (${targetRole}님)
+분석 기준: ${criteriaLabel} (실제 반영 라운드: ${roundCount}경기, 라운드 일자: ${dateList})
+평균 스코어: ${avgScore}타
+
+[실제 DB 통계 분석 결과 (높은 점수 = 많은 타수 손실 / 취약 항목)]:
+• 1위 (가장 취약): ${worst1.name} (${worst1.area}) - 평균 ${worst1.avgScore}점
+• 2위 (차순위 취약): ${worst2.name} (${worst2.area}) - 평균 ${worst2.avgScore}점
+• 3위: ${worst3.name} (${worst3.area}) - 평균 ${worst3.avgScore}점
+
+[전체 13개 세부 항목 점수 순위]:
+${categoryStats.map((c, i) => `  ${i + 1}. ${c.name} (${c.area}): ${c.avgScore}점`).join('\n')}
+
+위의 실제 DB 통계 데이터를 정밀하게 바탕으로 하여, ${targetAthlete.name} ${targetRole}님에게 즉시 적용할 수 있는 체계적이고 실전적인 4단계 맞춤 훈련 제안 리포트를 작성하세요.
+대상이 선수뿐만 아니라 코치나 관리자일 수도 있으므로, 호칭은 '${targetAthlete.name} ${targetRole}님' 또는 문맥에 맞게 정중하고 전문적인 코칭 톤으로 작성하세요.
+
+[필수 작성 구성]
+1. 📊 **최근 스코어 분석 요약**
+   - 분석 기준(${criteriaLabel}, ${roundCount}경기)과 평균 스코어(${avgScore}타) 명시.
+   - 13개 항목 중 타수 손실이 가장 컸던 1위(${worst1.name}: ${worst1.avgScore}점) 및 2위(${worst2.name}: ${worst2.avgScore}점)의 원인 및 통계 분석.
+2. 🎯 **1위 취약 항목 [${worst1.name}] 집중 교정 드릴**
+   - 드릴 명칭 및 훈련 목적
+   - 구체적인 실전 세팅 및 단계별 연습 방법 (거리, 클럽, 연습 방식)
+   - 권장 연습량 및 합격 기준 (예: 20구 x 3세트, 10회 중 7회 성공 등 구체적 수치)
+3. ⛳ **2위 취약 항목 [${worst2.name}] 보완 훈련 드릴**
+   - 드릴 명칭 및 훈련 목적
+   - 실전 연습 방법 및 루틴
+   - 권장 연습량 및 체크포인트
+4. 💡 **실전 코칭 & 라운드 매니지먼트 팁**
+   - 필드나 코스에서 짚어볼 핵심 체크포인트 1~2가지.
+   - 멘탈 관리 및 스코어 향상을 위한 실전 조언.
+
+- 문체는 정중하고 전문적인 코칭 톤(~합니다, ~권장합니다)으로 작성하세요.
+- 각 항목은 마크다운 볼드체와 글머리 기호(•)를 적절히 활용하여 스마트폰 화면에서도 한눈에 들어오게 가독성을 높여주세요.`;
+
+        // 6. Gemini 모델 스트리밍 호출
+        const scoreCandidateModels = Array.from(
+          new Set([
+            process.env.GEMINI_MODEL || "gemini-3.1-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.6-flash"
+          ])
+        );
+
+        if (payload.stream) {
+          const encoder = new TextEncoder();
+          const stream = new ReadableStream({
+            async start(controller) {
+              let success = false;
+              let accumulatedText = "";
+
+              for (const model of scoreCandidateModels) {
+                try {
+                  const abortCtrl = new AbortController();
+                  const timeoutId = setTimeout(() => abortCtrl.abort(), 35000);
+
+                  const res = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+                    {
+                      method: "POST",
+                      signal: abortCtrl.signal,
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        contents: [
+                          {
+                            role: "user",
+                            parts: [{ text: coachingPrompt }]
+                          }
+                        ],
+                        generationConfig: {
+                          temperature: 0.3,
+                          maxOutputTokens: 2500
+                        }
+                      })
+                    }
+                  );
+                  clearTimeout(timeoutId);
+
+                  if (!res.ok) {
+                    console.warn(`[ScoreTraining] ${model} failed with ${res.status}`);
+                    continue;
+                  }
+
+                  if (!res.body) continue;
+
+                  const reader = res.body.getReader();
+                  const decoder = new TextDecoder();
+                  let sseBuffer = "";
+
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    sseBuffer += decoder.decode(value, { stream: true });
+                    const lines = sseBuffer.split("\n");
+                    sseBuffer = lines.pop() || "";
+
+                    for (const line of lines) {
+                      const trimmed = line.trim();
+                      if (trimmed.startsWith("data: ")) {
+                        try {
+                          const json = JSON.parse(trimmed.slice(6));
+                          const textPart = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+                          if (textPart) {
+                            accumulatedText += textPart;
+                            controller.enqueue(
+                              encoder.encode(`data: ${JSON.stringify({ type: "chunk", text: textPart })}\n\n`)
+                            );
+                          }
+                        } catch (e) {}
+                      }
+                    }
+                  }
+
+                  if (accumulatedText.trim().length > 0) {
+                    controller.enqueue(
+                      encoder.encode(`data: ${JSON.stringify({
+                        type: "done",
+                        result: {
+                          intent: "RECOMMEND_TRAINING_FROM_SCORE",
+                          replyMessage: accumulatedText,
+                          athleteName: targetAthlete.name,
+                          options: quickOptions
+                        },
+                        modelUsed: model
+                      })}\n\n`)
+                    );
+                    controller.close();
+                    success = true;
+                    break;
+                  }
+                } catch (modelErr) {
+                  console.warn(`[ScoreTraining] ${model} error:`, modelErr);
+                }
+              }
+
+              if (!success) {
+                const fallbackReply = `**${targetAthlete.name}** 선수의 통계 분석 결과입니다. 🏌️‍♂️\n\n• **분석 기준:** ${criteriaLabel} (${roundCount}경기 평균 ${avgScore}타)\n• **1위 취약 항목:** ${worst1.name} (${worst1.avgScore}점)\n• **2위 취약 항목:** ${worst2.name} (${worst2.avgScore}점)\n\n현재 AI 상세 훈련 생성 연결이 지연되고 있으니 하단 버튼으로 다시 시도해 주세요.`;
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({
+                    type: "done",
+                    result: {
+                      intent: "RECOMMEND_TRAINING_FROM_SCORE",
+                      replyMessage: fallbackReply,
+                      athleteName: targetAthlete.name,
+                      options: quickOptions
+                    },
+                    modelUsed: "score-fallback"
+                  })}\n\n`)
+                );
+                controller.close();
+              }
+            }
+          });
+
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/event-stream; charset=utf-8",
+              "Cache-Control": "no-cache",
+              "Connection": "keep-alive"
+            }
+          });
+        }
+
+        // Non-streaming fallback
+        let syncText = "";
+        for (const model of scoreCandidateModels) {
+          try {
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ role: "user", parts: [{ text: coachingPrompt }] }],
+                  generationConfig: { temperature: 0.3, maxOutputTokens: 2500 }
+                })
+              }
+            );
+            if (res.ok) {
+              const resJson = await res.json();
+              syncText = resJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+              if (syncText) break;
+            }
+          } catch (e) {}
+        }
+
+        return NextResponse.json({
+          result: {
+            intent: "RECOMMEND_TRAINING_FROM_SCORE",
+            replyMessage: syncText || `**${targetAthlete.name}** 선수의 분석 결과: 1위 취약 항목은 [${worst1.name} (${worst1.avgScore}점)], 2위는 [${worst2.name} (${worst2.avgScore}점)]입니다.`,
+            athleteName: targetAthlete.name,
+            options: quickOptions
+          },
+          modelUsed: "gemini-sync"
+        });
+      } catch (scorePassErr) {
+        console.error("Score training pass error:", scorePassErr);
+      }
     }
 
     const athleteNamesList = (athletes || []).map((a: Athlete) => a.name).join(", ");

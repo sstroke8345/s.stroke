@@ -249,7 +249,8 @@ export function findSystemNavRoute(text: string): NavRoute | null {
         t.includes("사이트") || 
         t.includes("협회") || 
         t.includes("연맹") || 
-        t.includes("링크")
+        t.includes("링크") ||
+        ((t.includes("스코어") || t.includes("성적") || t.includes("통계")) && (t.includes("훈련") || t.includes("제안") || t.includes("추천") || t.includes("드릴") || t.includes("연습") || t.includes("보완")))
     ) {
         return null;
     }
@@ -307,44 +308,53 @@ export const BALL_LOCATIONS = [
     { label: "패널티 (해저드)", code: "PA" }
 ];
 
-// ── Cache for Athlete Names ──────────────────────────────────────
+// ── Cache for Athlete/User Targets (선수, 코치, 관리자 전원 포함) ────
 
-let athleteCache: { id: string; name: string }[] = [];
+export interface ChatUserTarget {
+    id: string;
+    name: string;
+    role?: string;
+}
 
-export async function preloadAthletes(): Promise<{ id: string; name: string }[]> {
+let athleteCache: ChatUserTarget[] = [];
+
+export async function preloadAthletes(): Promise<ChatUserTarget[]> {
     if (athleteCache.length > 0) return athleteCache;
     try {
         const supabase = createClient();
-        const { data, error } = await supabase.from("users").select("id, name").eq("role", "athlete");
+        // 선수뿐만 아니라 관리자, 코치 등 모든 사용자를 조회하여 지원
+        const { data, error } = await supabase.from("users").select("id, name, role").order("name", { ascending: true });
         if (data && !error) {
-            athleteCache = (data as Array<{ id: string; name: string | null }>).filter((u: { id: string; name: string | null }) => !!u.name) as { id: string; name: string }[];
+            athleteCache = (data as Array<{ id: string; name: string | null; role?: string | null }>).filter(u => !!u.name) as ChatUserTarget[];
         }
     } catch (e) {
-        console.error("Failed to preload athletes:", e);
+        console.error("Failed to preload athletes/users:", e);
     }
     return athleteCache;
 }
 
-// ── Athlete Name Extractor ───────────────────────────────────────
+// ── Athlete/User Name Extractor ───────────────────────────────────
 
-export function extractAthleteName(text: string, athletes: { id: string; name: string }[]): { id?: string; name?: string } {
-    const cleaned = text.replace(/\s+/g, "");
+export function extractAthleteName(text: string, athletes: ChatUserTarget[]): { id?: string; name?: string; role?: string } {
+    const cleaned = text.toLowerCase().replace(/\s+/g, "");
     
-    // 1. Direct inclusion
+    // 1. Direct inclusion (대소문자 무시)
     for (const a of athletes) {
-        if (cleaned.includes(a.name) || text.includes(a.name)) {
+        if (!a.name) continue;
+        const aClean = a.name.toLowerCase().replace(/\s+/g, "");
+        if (cleaned.includes(aClean)) {
             return a;
         }
     }
     
-    // 2. Regex for common 2-4 character Korean names if followed by 선수/회원
-    const nameMatch = text.match(/([가-힣]{2,4})\s*(?:선수|회원|프로)/);
+    // 2. Regex for 2-15 character Korean/English names if followed by 선수/코치/관리자/회원/프로/님
+    const nameMatch = text.match(/([가-힣a-zA-Z0-9_-]{2,15})\s*(?:선수|코치|관리자|회원|프로|님)/i);
     if (nameMatch && nameMatch[1]) {
-        const found = athletes.find(a => a.name === nameMatch[1]);
+        const searchName = nameMatch[1].toLowerCase();
+        const found = athletes.find(a => a.name && a.name.toLowerCase() === searchName);
         if (found) return found;
         return { name: nameMatch[1] };
     }
-
     return {};
 }
 
@@ -352,6 +362,13 @@ export function extractAthleteName(text: string, athletes: { id: string; name: s
 
 export function detectIntent(text: string): IntentType {
     const t = text.toLowerCase().replace(/\s+/g, "");
+
+    // 0. 스코어/성적/통계 기반 훈련 제안/추천/드릴 요청은 최우선으로 Gemini AI(chat-assistant)에 위임
+    const isScoreTrainingQuery = (t.includes("스코어") || t.includes("성적") || t.includes("통계")) && 
+        (t.includes("훈련") || t.includes("제안") || t.includes("추천") || t.includes("드릴") || t.includes("연습") || t.includes("보완"));
+    if (isScoreTrainingQuery) {
+        return "UNKNOWN";
+    }
 
     // 1. 조회 / 목록 관련 (명확한 조회 키워드가 포함된 경우만)
     const isExplicitQuery = t.includes("조회") || t.includes("목록") || t.includes("현황") || t.includes("내역") || t.includes("검색") || t.includes("찾아") || t.includes("보기") || t.includes("피드");
